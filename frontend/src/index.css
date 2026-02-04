@@ -1,0 +1,325 @@
+:root {
+  --bg: #f0f4f8;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --success: #22c55e;
+  --success-bg: #dcfce7;
+  --warning: #eab308;
+  --tp-accent: #2563eb;
+  --ts-accent: #16a34a;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+button:hover {
+  background: var(--accent-hover);
+}
+button:active {
+  transform: scale(0.98);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 큰 버튼 · 누르기 편하게 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  border-radius: 12px;
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+}
+.btn-large {
+  min-height: 48px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+input[type="file"] {
+  font: inherit;
+  color: var(--text);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.dragging {
+  opacity: 0.2;
+  cursor: grabbing;
+  pointer-events: none;
+}
+
+/* 드래그 중 커서를 따라다니는 떠 있는 카드 - body 포탈로 최상단 렌더 */
+.member-card-floating {
+  cursor: grabbing;
+  min-width: 220px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  background: #ffffff !important;
+  border: 3px solid var(--accent) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  transform: scale(1.08) rotate(-1.5deg);
+  position: relative;
+  z-index: 10001;
+  border-radius: 10px;
+}
+
+.member-card-floating-badge {
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+.member-name-floating {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0.25rem 0 0 0;
+  color: var(--text);
+}
+
+.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}
+
+.team-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.team-column {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.team-column.team-card {
+  min-height: 240px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.team-column.team-card.drop-target {
+  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+}
+
+.team-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.team-id {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.team-count {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.member-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.member-group-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0;
+  border-bottom: 1px dotted var(--border);
+}
+
+.member-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.drop-slot {
+  min-height: 6px;
+  margin: 1px 0;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.drop-slot-over {
+  background: rgba(59, 130, 246, 0.25);
+  min-height: 20px;
+}
+
+.member-card {
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.member-card-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.65rem;
+}
+
+.member-card-body {
+  flex: 1;
+  min-width: 0;
+  cursor: grab;
+}
+
+.member-card:active .member-card-body {
+  cursor: grabbing;
+}
+
+/* 오른쪽 클릭 시 나타나는 이동 메뉴 (body 포탈) */
+.member-move-context-menu {
+  position: fixed;
+  min-width: 160px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  padding: 0.25rem 0;
+}
+
+.member-move-context-menu .member-move-dropdown-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.2rem;
+}
+
+.member-move-context-menu .member-move-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.member-move-context-menu .member-move-dropdown-item:hover {
+  background: var(--bg);
+}
+
+.member-move-dropdown-count {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.member-card.tp {
+  border-left: 3px solid var(--tp-accent);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.member-card.ts {
+  border-left: 3px solid var(--ts-accent);
+  background: var(--success-bg);
+}
+
+.member-id-grade {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.member-id {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.member-name {
+  font-weight: 500;
+  margin: 0.15rem 0 0 0;
+}
+
+.member-meta {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+}

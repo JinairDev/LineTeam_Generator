@@ -1,0 +1,22 @@
+# Build / package
+backend/target/
+backend/*.jar
+frontend/dist/
+node_modules/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Env / local
+.env
+.env.local
+*.log
+
+# JAR/EXE 배포 결과 (선택)
+dist/
