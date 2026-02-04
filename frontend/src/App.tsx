@@ -1,16 +1,30 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { LineTeam } from './types'
+import type { TeamCountByBase } from './api'
 import { uploadExcel, assignTeams, moveMember, exportExcel } from './api'
 import { TeamBoard } from './TeamBoard'
 import './App.css'
 
-type Step = 'upload' | 'assigned'
+type Step = 'upload' | 'settings' | 'assigned'
 
 function App() {
   const [step, setStep] = useState<Step>('upload')
+  const [crew, setCrew] = useState<import('./types').CrewMember[]>([])
   const [teams, setTeams] = useState<LineTeam[]>([])
+  const [teamCountByBase, setTeamCountByBase] = useState<TeamCountByBase>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const basesWithTpCount = useMemo(() => {
+    if (crew.length === 0) return []
+    const baseTp: Record<string, number> = {}
+    crew.forEach((c) => {
+      const base = c.base?.trim() || '(없음)'
+      const isTP = (c.positionCode ?? '').includes('TP') || (c.grade ?? '').includes('TP')
+      if (isTP) baseTp[base] = (baseTp[base] ?? 0) + 1
+    })
+    return Object.entries(baseTp).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [crew])
 
   const onFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -23,15 +37,43 @@ function App() {
         setLoading(false)
         return
       }
-      const result = await assignTeams(list)
-      setTeams(result)
-      setStep('assigned')
+      setCrew(list)
+      const initial: TeamCountByBase = {}
+      list.forEach((c) => {
+        const b = c.base?.trim() || '(없음)'
+        const isTP = (c.positionCode ?? '').includes('TP') || (c.grade ?? '').includes('TP')
+        if (isTP) initial[b] = (initial[b] ?? 0) + 1
+      })
+      Object.keys(initial).forEach((b) => {
+        initial[b] = Math.max(1, initial[b]!)
+      })
+      setTeamCountByBase(initial)
+      setStep('settings')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '업로드 또는 편성 실패')
+      setError(err instanceof Error ? err.message : '업로드 실패')
     } finally {
       setLoading(false)
     }
   }, [])
+
+  const onRunAssign = useCallback(async () => {
+    setError(null)
+    setLoading(true)
+    try {
+      const effective: TeamCountByBase = {}
+      basesWithTpCount.forEach(([base, tpCount]) => {
+        const v = teamCountByBase[base]
+        effective[base] = v != null && v >= 1 ? v : Math.max(1, tpCount)
+      })
+      const result = await assignTeams(crew, effective)
+      setTeams(result)
+      setStep('assigned')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '편성 실패')
+    } finally {
+      setLoading(false)
+    }
+  }, [crew, teamCountByBase, basesWithTpCount])
 
   const onMoveMember = useCallback(
     async (
@@ -98,8 +140,56 @@ function App() {
                 onChange={onFileSelect}
                 disabled={loading}
               />
-              <span>{loading ? '업로드 및 편성 중…' : '엑셀 파일 업로드'}</span>
+              <span>{loading ? '업로드 중…' : '엑셀 파일 업로드'}</span>
             </label>
+          </section>
+        )}
+
+        {step === 'settings' && (
+          <section className="section card">
+            <h2>라인팀 갯수 설정</h2>
+            <p className="section-desc">지역(BASE)별 팀 수를 입력한 뒤 편성 실행을 눌러주세요. 팀 수를 TP 수보다 많게 하면 TP 없는 팀도 생성됩니다.</p>
+            <div className="team-count-form">
+              {basesWithTpCount.map(([base, tpCount]) => (
+                <div key={base} className="team-count-row">
+                  <label>
+                    <span className="team-count-label">{base}</span>
+                    <span className="team-count-tp">(TP {tpCount}명)</span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="team-count-input"
+                    placeholder={String(tpCount)}
+                    value={teamCountByBase[base] ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '')
+                      if (raw === '') {
+                        setTeamCountByBase((prev) => {
+                          const next = { ...prev }
+                          delete next[base]
+                          return next
+                        })
+                        return
+                      }
+                      const v = parseInt(raw, 10)
+                      if (v >= 1) setTeamCountByBase((prev) => ({ ...prev, [base]: v }))
+                    }}
+                  />
+                  <span className="team-count-unit">팀</span>
+                </div>
+              ))}
+            </div>
+            <div className="section-actions" style={{ marginTop: '1rem' }}>
+              <button
+                type="button"
+                className="btn btn-large btn-primary"
+                onClick={onRunAssign}
+                disabled={loading}
+              >
+                {loading ? '편성 중…' : '편성 실행'}
+              </button>
+            </div>
           </section>
         )}
 
@@ -108,6 +198,13 @@ function App() {
             <div className="section-header">
               <h2>편성 결과</h2>
               <div className="section-actions">
+                <button
+                  type="button"
+                  className="btn btn-large"
+                  onClick={() => setStep('settings')}
+                >
+                  팀 다시 생성하기
+                </button>
                 <button type="button" className="btn btn-large btn-primary" onClick={onExport}>
                   엑셀 추출
                 </button>

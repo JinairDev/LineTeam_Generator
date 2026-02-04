@@ -1,5 +1,6 @@
 package com.crew.lineteam.controller;
 
+import com.crew.lineteam.dto.AssignRequest;
 import com.crew.lineteam.dto.CrewMemberDto;
 import com.crew.lineteam.dto.LineTeamDto;
 import com.crew.lineteam.service.ExcelService;
@@ -35,11 +36,17 @@ public class CrewLineTeamController {
     }
 
     /**
-     * 2. 편성 실행: 승무원 목록을 받아 라인팀 목록 반환
+     * 2. 편성 실행: 승무원 목록과 선택적 지역별 팀 수를 받아 라인팀 목록 반환
      */
     @PostMapping("/assign")
-    public ResponseEntity<List<LineTeamDto>> assign(@RequestBody List<CrewMemberDto> crew) {
-        List<LineTeamDto> teams = teamAssignmentService.assign(crew);
+    public ResponseEntity<List<LineTeamDto>> assign(@RequestBody AssignRequest request) {
+        if (request == null || request.getCrew() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<LineTeamDto> teams = teamAssignmentService.assign(
+                request.getCrew(),
+                request.getTeamCountByBase()
+        );
         return ResponseEntity.ok(teams);
     }
 

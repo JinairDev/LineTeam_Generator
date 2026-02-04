@@ -13,11 +13,21 @@ export async function uploadExcel(file: File): Promise<CrewMember[]> {
   return res.json()
 }
 
-export async function assignTeams(crew: CrewMember[]): Promise<LineTeam[]> {
+export interface TeamCountByBase {
+  [base: string]: number  // e.g. { SEL: 5, PUS: 3 }
+}
+
+export async function assignTeams(
+  crew: CrewMember[],
+  teamCountByBase?: TeamCountByBase
+): Promise<LineTeam[]> {
   const res = await fetch(`${API}/assign`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(crew),
+    body: JSON.stringify({
+      crew,
+      ...(teamCountByBase && Object.keys(teamCountByBase).length > 0 && { teamCountByBase }),
+    }),
   })
   if (!res.ok) throw new Error('편성 실패')
   return res.json()

@@ -43,4 +43,48 @@ public class CrewMemberDto {
         if (gender == null) return false;
         return "M".equalsIgnoreCase(gender) || "남".equals(gender) || "남자".equals(gender);
     }
+
+    /** 자격이 LJ인지 (라인팀 TP/TS 매칭 규칙용) */
+    public boolean isLineQualificationLJ() {
+        return "LJ".equalsIgnoreCase(normalizeLineQualification(rank));
+    }
+
+    /** 자격이 BX인지 */
+    public boolean isLineQualificationBX() {
+        return "BX".equalsIgnoreCase(normalizeLineQualification(rank));
+    }
+
+    /** 자격이 RS인지 */
+    public boolean isLineQualificationRS() {
+        return "RS".equalsIgnoreCase(normalizeLineQualification(rank));
+    }
+
+    /** 정규화된 라인자격: LJ, BX, RS 중 하나 또는 null */
+    public String getLineQualification() {
+        return normalizeLineQualification(rank);
+    }
+
+    private static String normalizeLineQualification(String r) {
+        if (r == null || r.isBlank()) return null;
+        String s = r.trim().toUpperCase();
+        if (s.contains("LJ")) return "LJ";
+        if (s.contains("BX")) return "BX";
+        if (s.contains("RS")) return "RS";
+        return null;
+    }
+
+    /**
+     * 이 TS가 주어진 TP가 있는 팀에 배정 가능한지
+     * - TP가 LJ이면 TS는 LJ, BX, RS 모두 가능
+     * - TP가 BX 또는 RS이면 TS는 LJ만 가능
+     */
+    public boolean canBeTSInTeamWithTP(CrewMemberDto tp) {
+        if (tp == null) return true;
+        String tpQ = tp.getLineQualification();
+        String myQ = getLineQualification();
+        if (tpQ == null || myQ == null) return true;
+        if (tp.isLineQualificationLJ()) return true;
+        if (tp.isLineQualificationBX() || tp.isLineQualificationRS()) return isLineQualificationLJ();
+        return true;
+    }
 }

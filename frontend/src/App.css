@@ -131,3 +131,52 @@
   color: var(--accent);
   margin-left: 0.2rem;
 }
+
+.team-count-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 320px;
+}
+
+.team-count-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.team-count-row label {
+  flex: 0 0 auto;
+  min-width: 6rem;
+  font-weight: 500;
+}
+
+.team-count-tp {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+  margin-left: 0.25rem;
+}
+
+.team-count-row input.team-count-input,
+.team-count-row input[type="text"].team-count-input {
+  width: 4.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.team-count-row input.team-count-input::-webkit-outer-spin-button,
+.team-count-row input.team-count-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.team-count-unit {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}

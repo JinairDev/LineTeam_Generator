@@ -245,18 +245,30 @@ chmod +x build-package.sh
 
 **JDK 14 이상**에 포함된 `jpackage` 로 Windows용 설치형/실행 파일을 만들 수 있습니다.
 
-**Windows**
-```bat
-build-exe.bat
-```
+**순서**
+1. **명령 프롬프트(cmd)** 또는 **PowerShell**을 **관리자 권한 없이** 연다.
+2. 프로젝트 폴더로 이동: `cd 경로\LineTeam_Generator`
+3. 한 번에 실행:
+   ```bat
+   build-exe.bat
+   ```
+   (JAR가 없으면 `build-package.bat` 이 자동으로 먼저 실행된다.)
 
-- JAR가 없으면 먼저 `build-package.bat` 을 실행한 뒤 `build-exe.bat` 을 실행합니다.
-- 생성 결과는 **dist** 폴더에 들어갑니다 (설치 프로그램 또는 앱 번들).
-- 설치 후 실행하면 **localhost:8080** 에서 서비스되며, 브라우저가 자동으로 열립니다.
+- 생성 결과는 **dist** 폴더에 들어갑니다 (`.exe` 또는 설치 프로그램).
+- 설치/실행 후 **localhost:8080** 에서 서비스되며, 브라우저가 자동으로 열립니다.
 
-**주의**
-- EXE 생성에는 **JDK**가 필요합니다 (`java -version` 이 아닌 `jpackage` 가 들어 있는 JDK).
-- `jpackage` 가 없다면 [Adoptium](https://adoptium.net/) 등에서 JDK 21을 설치한 뒤 사용하세요.
+**필수**
+- **JDK**가 필요합니다. `java -version`만 되고 `jpackage`가 없다면 JDK가 아닌 JRE만 설치된 상태일 수 있습니다. [Adoptium JDK 21](https://adoptium.net/) 등을 설치한 뒤 **JAVA_HOME**을 JDK 설치 경로로 설정하세요.
+  ```bat
+  set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.1
+  ```
+- **Node.js 20 이상**, **Maven**도 필요합니다. (`build-package.bat` 에서 사용)
+
+**EXE 빌드가 안 될 때**
+- `jpackage를 찾을 수 없습니다` → JDK를 설치하고, 위처럼 `JAVA_HOME` 설정 후 **새 명령 프롬프트**에서 다시 실행.
+- `npm install 실패` / `Frontend 빌드 실패` → Node.js 설치 및 `node -v`, `npm -v` 확인.
+- `Backend 빌드 실패` → Maven 설치 및 `mvn -v` 확인.
+- 그래도 안 되면 **GitHub Actions**로 받기: 저장소 **Actions** 탭 → **Build Windows EXE** → **Run workflow** → 완료 후 **Artifacts**에서 다운로드. (Windows에서 직접 빌드하지 않아도 됨)
 
 ### 3. 요약
 
@@ -304,6 +316,12 @@ build-exe.bat
 
 - 터미널을 **관리자 권한**으로 열 필요는 없습니다. 보통은 프로젝트 폴더 권한이나 네트워크(방화벽, 프록시) 문제일 수 있습니다.
 - 회사 네트워크라면 프록시 설정이 필요할 수 있습니다. (`npm config set proxy ...` 등)
+
+### Windows에서 EXE 빌드가 안 됩니다
+
+- **jpackage를 찾을 수 없습니다** → JDK(Java Development Kit)를 설치하세요. JRE만 있으면 안 됩니다. [Adoptium JDK 21](https://adoptium.net/) 설치 후 `set JAVA_HOME=JDK설치경로` 로 설정하고, **새 cmd** 창에서 `build-exe.bat` 다시 실행.
+- **npm / mvn 오류** → [단일 JAR / EXE로 실행하기](#단일-jar--exe로-실행하기)의 "필수" 항목대로 Node.js, Maven 설치 및 PATH 확인.
+- **직접 빌드 없이 EXE만 받기** → GitHub 저장소 **Actions** 탭 → **Build Windows EXE** → **Run workflow** → 완료 후 **Artifacts**에서 `LineTeam_Generator-Windows` 다운로드.
 
 ---
 
