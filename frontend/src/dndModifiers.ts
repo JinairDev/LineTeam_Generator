@@ -12,14 +12,16 @@ export const centerUnderCursor: Modifier = ({
 }) => {
   const rect = overlayNodeRect ?? draggingNodeRect
   if (!activatorEvent || !rect) return transform
-  const clientX =
-    'clientX' in activatorEvent
-      ? activatorEvent.clientX
-      : activatorEvent.touches?.[0]?.clientX ?? 0
-  const clientY =
-    'clientY' in activatorEvent
-      ? activatorEvent.clientY
-      : activatorEvent.touches?.[0]?.clientY ?? 0
+  let clientX = 0
+  let clientY = 0
+  if ('clientX' in activatorEvent && 'clientY' in activatorEvent) {
+    const mouseEvent = activatorEvent as MouseEvent
+    clientX = mouseEvent.clientX
+    clientY = mouseEvent.clientY
+  } else if (activatorEvent instanceof TouchEvent && activatorEvent.touches?.[0]) {
+    clientX = activatorEvent.touches[0].clientX
+    clientY = activatorEvent.touches[0].clientY
+  }
   const offsetX = clientX - rect.left - rect.width / 2
   const offsetY = clientY - rect.top - rect.height / 2
   return {

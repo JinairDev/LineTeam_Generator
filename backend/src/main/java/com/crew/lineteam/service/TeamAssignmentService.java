@@ -29,6 +29,10 @@ public class TeamAssignmentService {
                 .filter(c -> !c.isTP() && !c.isTS())
                 .collect(Collectors.toList());
 
+        // TP 개수 로깅
+        System.out.println(String.format("[TeamAssignmentService] 총 승무원: %d명, TP: %d명, TS: %d명, 기타: %d명", 
+                allCrew.size(), tps.size(), tss.size(), others.size()));
+
         Map<String, List<CrewMemberDto>> tpByBase = tps.stream().collect(Collectors.groupingBy(c -> nullToDefault(c.getBase())));
         List<LineTeamDto> teams = new ArrayList<>();
         List<CrewMemberDto> extraTps = new ArrayList<>();
@@ -38,10 +42,22 @@ public class TeamAssignmentService {
             List<CrewMemberDto> baseTps = new ArrayList<>(e.getValue());
             Collections.shuffle(baseTps);
 
+            // TP 개수만큼 팀을 생성 (teamCountByBase가 지정되어 있어도 TP 개수를 우선)
+            int tpCount = baseTps.size();
             int teamCount = teamCountByBase != null && teamCountByBase.containsKey(base)
                     ? Math.max(1, teamCountByBase.get(base))
-                    : baseTps.size();
-            if (teamCount <= 0) teamCount = baseTps.size();
+                    : tpCount;
+            
+            // TP 개수보다 팀 수가 많으면 안 됨 (TP가 없는 팀은 생성하지 않음)
+            if (teamCount > tpCount) {
+                System.out.println(String.format("[TeamAssignmentService] 경고: %s 지역의 팀 수(%d)가 TP 수(%d)보다 많습니다. TP 수로 조정합니다.", 
+                        base, teamCount, tpCount));
+                teamCount = tpCount;
+            }
+            
+            if (teamCount <= 0) teamCount = tpCount;
+            
+            System.out.println(String.format("[TeamAssignmentService] %s 지역: TP %d명, 팀 %d개 생성", base, tpCount, teamCount));
 
             for (int i = 0; i < teamCount; i++) {
                 List<CrewMemberDto> members = new ArrayList<>();
@@ -155,13 +171,96 @@ public class TeamAssignmentService {
             List<LineTeamDto> baseTeams = teamsByBase.get(base);
             if (baseTeams == null) baseTeams = teams;
             int startIdx = nextTeamIndexByBase.getOrDefault(base, 0);
+            
+            // 먼저 MAX_TEAM_SIZE 이하인 팀 찾기
             LineTeamDto team = findTeamWithCapacity(baseTeams, startIdx, MAX_TEAM_SIZE);
+            
+            // 같은 지역에 자리가 없으면 다른 지역 팀에도 배정 시도
+            if (team == null) {
+                team = findTeamWithCapacity(teams, 0, MAX_TEAM_SIZE);
+            }
+            
+            // 그래도 없으면 팀 크기 제한을 완화하여 배정 (최대 20명까지)
+            if (team == null) {
+                team = findTeamWithCapacity(baseTeams, 0, MAX_TEAM_SIZE + 5);
+            }
+            
+            // 여전히 없으면 모든 팀 중 가장 적은 인원의 팀에 배정
+            if (team == null && !teams.isEmpty()) {
+                team = teams.stream()
+                        .min(Comparator.comparingInt(LineTeamDto::getMemberCount))
+                        .orElse(null);
+            }
+            
             if (team != null) {
                 team.getMembers().add(c);
                 assignedIds.add(c.getEmployeeId());
                 int foundIdx = baseTeams.indexOf(team);
                 nextTeamIndexByBase.put(base, foundIdx >= 0 ? (foundIdx + 1) % baseTeams.size() : (startIdx + 1) % baseTeams.size());
             }
+        }
+
+        // 모든 승무원이 배정되었는지 확인
+        Set<String> allCrewIds = allCrew.stream().map(CrewMemberDto::getEmployeeId).collect(Collectors.toSet());
+        Set<String> unassignedIds = new HashSet<>(allCrewIds);
+        unassignedIds.removeAll(assignedIds);
+        
+        if (!unassignedIds.isEmpty()) {
+            System.err.println(String.format("[TeamAssignmentService] 경고: %d명의 승무원이 배정되지 않았습니다.", unassignedIds.size()));
+            
+            // 배정 실패 원인 분석
+            System.out.println(String.format("[TeamAssignmentService] 팀 현황: 총 %d개 팀", teams.size()));
+            for (LineTeamDto team : teams) {
+                System.out.println(String.format("  - %s: %d명 (최대: %d)", team.getTeamId(), team.getMemberCount(), MAX_TEAM_SIZE));
+            }
+            
+            // 남은 승무원을 가능한 팀에 강제 배정
+            final Set<String> finalUnassignedIds = new HashSet<>(unassignedIds); // final 복사본 생성
+            List<CrewMemberDto> unassigned = allCrew.stream()
+                    .filter(c -> finalUnassignedIds.contains(c.getEmployeeId()))
+                    .collect(Collectors.toList());
+            
+            for (CrewMemberDto c : unassigned) {
+                String base = nullToDefault(c.getBase());
+                List<LineTeamDto> baseTeams = teamsByBase.get(base);
+                if (baseTeams == null) baseTeams = teams;
+                
+                // 같은 지역 팀에 배정 시도 (크기 제한 완화)
+                LineTeamDto team = findTeamWithCapacity(baseTeams, 0, MAX_TEAM_SIZE + 10);
+                
+                // 같은 지역에 없으면 다른 지역 팀에도 배정
+                if (team == null) {
+                    team = findTeamWithCapacity(teams, 0, MAX_TEAM_SIZE + 10);
+                }
+                
+                // 그래도 없으면 가장 적은 인원의 팀에 배정
+                if (team == null && !teams.isEmpty()) {
+                    team = teams.stream()
+                            .min(Comparator.comparingInt(LineTeamDto::getMemberCount))
+                            .orElse(null);
+                }
+                
+                if (team != null) {
+                    team.getMembers().add(c);
+                    assignedIds.add(c.getEmployeeId());
+                    System.out.println(String.format("[TeamAssignmentService] 강제 배정: %s (%s) → %s", 
+                            c.getName(), c.getEmployeeId(), team.getTeamId()));
+                } else {
+                    System.err.println(String.format("[TeamAssignmentService] 심각: %s (%s)를 배정할 수 없습니다.", 
+                            c.getName(), c.getEmployeeId()));
+                }
+            }
+        }
+        
+        // 최종 검증: 모든 승무원이 배정되었는지 확인
+        allCrewIds = allCrew.stream().map(CrewMemberDto::getEmployeeId).collect(Collectors.toSet());
+        unassignedIds = new HashSet<>(allCrewIds);
+        unassignedIds.removeAll(assignedIds);
+        if (!unassignedIds.isEmpty()) {
+            System.err.println(String.format("[TeamAssignmentService] 심각: 여전히 %d명의 승무원이 배정되지 않았습니다: %s", 
+                    unassignedIds.size(), unassignedIds));
+        } else {
+            System.out.println(String.format("[TeamAssignmentService] 성공: 모든 승무원(%d명)이 배정되었습니다.", allCrew.size()));
         }
 
         return teams;

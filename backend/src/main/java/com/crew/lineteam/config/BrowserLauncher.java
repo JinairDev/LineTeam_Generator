@@ -22,7 +22,8 @@ public class BrowserLauncher implements ApplicationRunner {
         try {
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                 Thread.sleep(2500);
-                Desktop.getDesktop().browse(URI.create("http://localhost:8080"));
+                String port = System.getProperty("server.port", "8765");
+                Desktop.getDesktop().browse(URI.create("http://localhost:" + port));
             }
         } catch (Exception ignored) {
         }

@@ -27,7 +27,7 @@ interface TeamColumnProps {
   ) => void
 }
 
-function TeamColumnInner({ team, otherTeams, onMoveMember, onOpenMoveMenu }: TeamColumnProps) {
+function TeamColumnInner({ team, otherTeams, onOpenMoveMenu }: TeamColumnProps) {
   const tpMembers = team.members.filter(isTP)
   const tsMembers = team.members.filter(isTS)
   const restMembers = team.members.filter((m) => !isTP(m) && !isTS(m))

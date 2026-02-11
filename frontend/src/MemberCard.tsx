@@ -47,7 +47,7 @@ function MemberCardInner({
           </div>
           <div className="member-name">{member.name || '-'}</div>
           <div className="member-meta">
-            {[member.positionCode, member.rank].filter(Boolean).join(' · ')}
+            {[member.positionCode, member.rank].filter(v => v && v.trim()).join(' · ') || '-'}
           </div>
         </div>
       </div>

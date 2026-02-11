@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   DndContext,
@@ -89,7 +89,7 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
     onMoveMember(payload.member.employeeId, payload.teamId, toTeamId, toIndex)
   }
 
-  const overlayContent = (active: { id: string; data: { current: unknown } } | null) => {
+  const overlayContent = (active: { id: string; data: { current: unknown } } | null): React.ReactElement | null => {
     const payload = active?.data.current as { member: CrewMember; teamId: string } | undefined
     if (!payload) return null
     return <MemberCardPreview member={payload.member} />
@@ -141,7 +141,7 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
           modifiers={[centerUnderCursor]}
           zIndex={10000}
         >
-          {(active) => overlayContent(active)}
+          {overlayContent as any}
         </DragOverlay>,
         document.body
       )}
