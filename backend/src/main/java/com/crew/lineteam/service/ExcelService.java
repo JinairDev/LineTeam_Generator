@@ -170,7 +170,7 @@ public class ExcelService {
                 .grade(nullToEmpty(get.apply("grade")))
                 .status(nullToEmpty(get.apply("status")))
                 .rank(nullToEmpty(get.apply("rank")))
-                .from(nullToEmpty(get.apply("from")))
+                .fromColumn(nullToEmpty(get.apply("from")))
                 .build();
     }
 
@@ -243,7 +243,7 @@ public class ExcelService {
                     row.createCell(6).setCellValue(m.getGrade());
                     row.createCell(7).setCellValue(m.getStatus() != null ? m.getStatus() : "");
                     row.createCell(8).setCellValue(m.getRank());
-                    row.createCell(9).setCellValue(m.getFrom() != null ? m.getFrom() : "");
+                    row.createCell(9).setCellValue(m.getFromColumn() != null ? m.getFromColumn() : "");
                 }
                 rowNum++; // 팀 간 빈 행
             }

@@ -25,6 +25,7 @@ public class CrewMemberDto {
     private String line;         // Line 컬럼 (A411 등)
     private String status;      // 구분: 재직 등
     private String department;  // 부서 (선택)
+    private String fromColumn;  // FROM 칼럼: LJ, RS, BX 중 하나 (필드명 from은 Lombok 빌더와 충돌 가능해 fromColumn 사용)
 
     /** 팀장(TP) 여부 - positionCode 또는 grade에 TP 포함 */
     public boolean isTP() {
@@ -44,29 +45,29 @@ public class CrewMemberDto {
         return "M".equalsIgnoreCase(gender) || "남".equals(gender) || "남자".equals(gender);
     }
 
-    /** 자격이 LJ인지 (라인팀 TP/TS 매칭 규칙용) */
+    /** 자격이 LJ인지 (라인팀 TP/TS 매칭 규칙용) - FROM 필드 사용 */
     public boolean isLineQualificationLJ() {
-        return "LJ".equalsIgnoreCase(normalizeLineQualification(rank));
+        return "LJ".equalsIgnoreCase(normalizeFrom(fromColumn));
     }
 
-    /** 자격이 BX인지 */
+    /** 자격이 BX인지 - FROM 필드 사용 */
     public boolean isLineQualificationBX() {
-        return "BX".equalsIgnoreCase(normalizeLineQualification(rank));
+        return "BX".equalsIgnoreCase(normalizeFrom(fromColumn));
     }
 
-    /** 자격이 RS인지 */
+    /** 자격이 RS인지 - FROM 필드 사용 */
     public boolean isLineQualificationRS() {
-        return "RS".equalsIgnoreCase(normalizeLineQualification(rank));
+        return "RS".equalsIgnoreCase(normalizeFrom(fromColumn));
     }
 
-    /** 정규화된 라인자격: LJ, BX, RS 중 하나 또는 null */
+    /** 정규화된 라인자격: LJ, BX, RS 중 하나 또는 null - FROM 필드 사용 */
     public String getLineQualification() {
-        return normalizeLineQualification(rank);
+        return normalizeFrom(fromColumn);
     }
 
-    private static String normalizeLineQualification(String r) {
-        if (r == null || r.isBlank()) return null;
-        String s = r.trim().toUpperCase();
+    private static String normalizeFrom(String f) {
+        if (f == null || f.isBlank()) return null;
+        String s = f.trim().toUpperCase();
         if (s.contains("LJ")) return "LJ";
         if (s.contains("BX")) return "BX";
         if (s.contains("RS")) return "RS";
@@ -74,14 +75,14 @@ public class CrewMemberDto {
     }
 
     /**
-     * 이 TS가 주어진 TP가 있는 팀에 배정 가능한지
+     * 이 TS가 주어진 TP가 있는 팀에 배정 가능한지 (FROM 칼럼 기준)
      * - TP가 LJ이면 TS는 LJ, BX, RS 모두 가능
      * - TP가 BX 또는 RS이면 TS는 LJ만 가능
      */
     public boolean canBeTSInTeamWithTP(CrewMemberDto tp) {
         if (tp == null) return true;
-        String tpQ = tp.getLineQualification();
-        String myQ = getLineQualification();
+        String tpQ = tp.getLineQualification(); // FROM 칼럼에서 추출
+        String myQ = getLineQualification(); // FROM 칼럼에서 추출
         if (tpQ == null || myQ == null) return true;
         if (tp.isLineQualificationLJ()) return true;
         if (tp.isLineQualificationBX() || tp.isLineQualificationRS()) return isLineQualificationLJ();
