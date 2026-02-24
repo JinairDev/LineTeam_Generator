@@ -1,15 +1,17 @@
-/** 승무원 리스트 Test.xlsx 기준: 사번, 이름, 성별, BASE, Rank(TP/TS), Line, 직급, 구분, 자격 */
+/** 승무원 카드 표시: 사번·성별·직급 / 이름 / FROM·RANK·ANNC·Qualification */
 export interface CrewMember {
   employeeId: string
   name: string
   grade: string
-  positionCode?: string  // Rank 컬럼: TP, TS 등
+  positionCode?: string  // RANK: TP, TS 등
   gender: string
-  rank: string           // 자격: S/A/B/YY 방송자격
+  rank: string           // FROM: LJ, BX, RS (라인자격)
   base: string
   line?: string
   status?: string
   department?: string
+  annc?: string          // ANNC
+  qualification?: string // Qualification (심사관 등)
 }
 
 export interface LineTeam {

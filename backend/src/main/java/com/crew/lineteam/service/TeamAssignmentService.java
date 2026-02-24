@@ -9,15 +9,14 @@ import java.util.stream.Collectors;
 
 /**
  * 라인팀 편성 알고리즘
- * - 조건1: 지역별 팀 수 = teamCountByBase 지정값 또는 지역별 TP 수
- * - 조건2: 팀당 TS 최소 1명 (TP/TS 자격 규칙: TP가 LJ면 TS는 LJ/BX/RS 가능, TP가 BX/RS면 TS는 LJ만)
- * - 조건3: 팀당 11~15명 (TS, TP 포함)
- * - 조건4~7: 직급/성별/Rank 균등 배분
+ * - 팀 수 = TP 인원 수 (지역별 TP 몇 명이면 팀이 그 개수만큼 생성, 고정 아님)
+ * - TP/TS 자격 규칙: TP=LJ → TS는 LJ/BX/RS 가능, TP=BX/RS → TS는 LJ만
+ * - TS 인원은 자격 규칙을 지키면서 팀별 TS 수가 균등하도록 배분 (항상 TS 수가 가장 적은 팀에 우선 배정)
+ * - 팀당 11~15명 목표, 지역별 균등 배분
  */
 @Service
 public class TeamAssignmentService {
 
-    private static final int MIN_TEAM_SIZE = 11;
     private static final int MAX_TEAM_SIZE = 15;
 
     public List<LineTeamDto> assign(List<CrewMemberDto> allCrew, Map<String, Integer> teamCountByBase) {
@@ -29,11 +28,7 @@ public class TeamAssignmentService {
                 .filter(c -> !c.isTP() && !c.isTS())
                 .collect(Collectors.toList());
 
-        // TP 개수 로깅
-        System.out.println(String.format("[TeamAssignmentService] 총 승무원: %d명, TP: %d명, TS: %d명, 기타: %d명", 
-                allCrew.size(), tps.size(), tss.size(), others.size()));
-
-        Map<String, List<CrewMemberDto>> tpByBase = tps.stream().collect(Collectors.groupingBy(c -> nullToDefault(c.getBase())));
+        Map<String, List<CrewMemberDto>> tpByBase = tps.stream().collect(Collectors.groupingBy(c -> normalizeBase(c.getBase())));
         List<LineTeamDto> teams = new ArrayList<>();
         List<CrewMemberDto> extraTps = new ArrayList<>();
 
@@ -42,55 +37,19 @@ public class TeamAssignmentService {
             List<CrewMemberDto> baseTps = new ArrayList<>(e.getValue());
             Collections.shuffle(baseTps);
 
-            // TP 개수만큼 팀을 생성 (teamCountByBase가 지정되어 있어도 TP 개수를 우선)
-            int tpCount = baseTps.size();
-            int teamCount = teamCountByBase != null && teamCountByBase.containsKey(base)
-                    ? Math.max(1, teamCountByBase.get(base))
-                    : tpCount;
-            
-            // TP 개수보다 팀 수가 많으면 안 됨 (TP가 없는 팀은 생성하지 않음)
-            if (teamCount > tpCount) {
-                System.out.println(String.format("[TeamAssignmentService] 경고: %s 지역의 팀 수(%d)가 TP 수(%d)보다 많습니다. TP 수로 조정합니다.", 
-                        base, teamCount, tpCount));
-                teamCount = tpCount;
-            }
-            
-            if (teamCount <= 0) teamCount = tpCount;
-            
-            System.out.println(String.format("[TeamAssignmentService] %s 지역: TP %d명, 팀 %d개 생성", base, tpCount, teamCount));
+            // 팀 수 = TP 인원 수 (무조건)
+            int teamCount = baseTps.size();
+            if (teamCount <= 0) continue;
 
             for (int i = 0; i < teamCount; i++) {
                 List<CrewMemberDto> members = new ArrayList<>();
-                if (i < baseTps.size()) {
-                    members.add(baseTps.get(i));
-                }
+                members.add(baseTps.get(i));
                 teams.add(LineTeamDto.builder()
                         .teamId(base + "-" + String.format("%02d", i + 1))
                         .base(base)
                         .indexInBase(i + 1)
                         .members(members)
                         .build());
-            }
-            if (baseTps.size() > teamCount) {
-                for (int i = teamCount; i < baseTps.size(); i++) {
-                    extraTps.add(baseTps.get(i));
-                }
-            }
-        }
-        // TP가 없는 지역도 teamCountByBase에 있으면 팀만 생성 (TP 없이)
-        if (teamCountByBase != null) {
-            for (Map.Entry<String, Integer> e : teamCountByBase.entrySet()) {
-                String base = e.getKey();
-                if (tpByBase.containsKey(base)) continue;
-                int teamCount = Math.max(1, e.getValue());
-                for (int i = 0; i < teamCount; i++) {
-                    teams.add(LineTeamDto.builder()
-                            .teamId(base + "-" + String.format("%02d", i + 1))
-                            .base(base)
-                            .indexInBase(i + 1)
-                            .members(new ArrayList<>())
-                            .build());
-                }
             }
         }
         others.addAll(extraTps);
@@ -109,7 +68,7 @@ public class TeamAssignmentService {
             String base = team.getBase();
             CrewMemberDto toAdd = null;
             for (CrewMemberDto ts : tsLj) {
-                if (nullToDefault(ts.getBase()).equals(base)) {
+                if (normalizeBase(ts.getBase()).equals(base)) {
                     toAdd = ts;
                     break;
                 }
@@ -119,35 +78,25 @@ public class TeamAssignmentService {
                 team.getMembers().add(toAdd);
             }
         }
-        // 2) 나머지 TS를 규칙에 맞게 같은 BASE 팀에만 배정 (지역 내 라운드로빈)
+        // 2) 나머지 TS를 규칙에 맞게 같은 BASE 팀에만 배정, 팀별 TS 수 균등 배분 (자격 규칙 준수)
         List<CrewMemberDto> tsRemaining = new ArrayList<>();
         tsRemaining.addAll(tsLj);
         tsRemaining.addAll(tsOther);
         Collections.shuffle(tsRemaining);
-        Map<String, Integer> tsNextIdxByBase = new HashMap<>();
         List<CrewMemberDto> tsUnassigned = new ArrayList<>();
         for (CrewMemberDto ts : tsRemaining) {
-            String base = nullToDefault(ts.getBase());
+            String base = normalizeBase(ts.getBase());
             List<LineTeamDto> baseTeams = teamsByBaseForTs.get(base);
             if (baseTeams == null) baseTeams = teams;
-            int startIdx = tsNextIdxByBase.getOrDefault(base, 0);
-            LineTeamDto team = null;
-            for (int i = 0; i < baseTeams.size(); i++) {
-                LineTeamDto t = baseTeams.get((startIdx + i) % baseTeams.size());
-                CrewMemberDto tp = t.getMembers().stream().filter(CrewMemberDto::isTP).findFirst().orElse(null);
-                if (ts.canBeTSInTeamWithTP(tp) && t.getMemberCount() < MAX_TEAM_SIZE) {
-                    team = t;
-                    tsNextIdxByBase.put(base, (startIdx + i + 1) % baseTeams.size());
-                    break;
-                }
-            }
+            LineTeamDto team = findTeamWithFewestTS(baseTeams, ts, MAX_TEAM_SIZE);
             if (team != null) team.getMembers().add(ts);
             else tsUnassigned.add(ts);
         }
         for (CrewMemberDto ts : tsUnassigned) {
-            String base = nullToDefault(ts.getBase());
+            String base = normalizeBase(ts.getBase());
             List<LineTeamDto> baseTeams = teamsByBaseForTs.get(base);
-            LineTeamDto team = baseTeams != null ? findTeamWithCapacity(baseTeams, 0, MAX_TEAM_SIZE) : findTeamWithCapacity(teams, 0, MAX_TEAM_SIZE);
+            List<LineTeamDto> candidates = baseTeams != null ? baseTeams : teams;
+            LineTeamDto team = findTeamWithFewestTS(candidates, ts, MAX_TEAM_SIZE);
             if (team != null) team.getMembers().add(ts);
         }
 
@@ -167,7 +116,7 @@ public class TeamAssignmentService {
 
         for (CrewMemberDto c : flatPool) {
             if (assignedIds.contains(c.getEmployeeId())) continue;
-            String base = nullToDefault(c.getBase());
+            String base = normalizeBase(c.getBase());
             List<LineTeamDto> baseTeams = teamsByBase.get(base);
             if (baseTeams == null) baseTeams = teams;
             int startIdx = nextTeamIndexByBase.getOrDefault(base, 0);
@@ -274,6 +223,26 @@ public class TeamAssignmentService {
         return null;
     }
 
+    /** 자격 규칙을 만족하고 여유 인원이 있는 팀 중, TS 수가 가장 적은 팀 반환 (TS 균등 배분용) */
+    private LineTeamDto findTeamWithFewestTS(List<LineTeamDto> teams, CrewMemberDto ts, int maxSize) {
+        LineTeamDto best = null;
+        int bestTsCount = Integer.MAX_VALUE;
+        int bestTotal = Integer.MAX_VALUE;
+        for (LineTeamDto t : teams) {
+            if (t.getMemberCount() >= maxSize) continue;
+            CrewMemberDto tp = t.getMembers().stream().filter(CrewMemberDto::isTP).findFirst().orElse(null);
+            if (!ts.canBeTSInTeamWithTP(tp)) continue;
+            long tsCount = t.getMembers().stream().filter(CrewMemberDto::isTS).count();
+            int total = t.getMemberCount();
+            if (tsCount < bestTsCount || (tsCount == bestTsCount && total < bestTotal)) {
+                best = t;
+                bestTsCount = (int) tsCount;
+                bestTotal = total;
+            }
+        }
+        return best;
+    }
+
     private List<CrewMemberDto> buildBalancedPool(List<CrewMemberDto> others,
                                                   Map<String, List<CrewMemberDto>> byGrade,
                                                   Map<String, List<CrewMemberDto>> byRank) {
@@ -303,5 +272,20 @@ public class TeamAssignmentService {
 
     private static String nullToDefault(String s) {
         return s == null || s.isBlank() ? "(없음)" : s;
+    }
+
+    /** BASE 정규화: trim, 빈 값은 (없음), PUS/부산 포함→PUS·SEL/서울 포함→SEL (부분 일치·숫자 1→SEL 2→PUS) */
+    private static String normalizeBase(String s) {
+        if (s == null) return "(없음)";
+        String v = s.trim().replace("\u00A0", " ").trim();
+        if (v.isEmpty()) return "(없음)";
+        String u = v.toUpperCase();
+        if ("2".equals(v) || "02".equals(v) || "2.0".equals(v)) return "PUS";
+        if ("1".equals(v) || "01".equals(v) || "1.0".equals(v)) return "SEL";
+        if (u.contains("PUS") || v.contains("부산") || u.contains("BUSAN")) return "PUS";
+        if (u.contains("SEL") || v.contains("서울") || u.contains("SEOUL")) return "SEL";
+        if ("PUS".equals(u) || "부산".equals(v) || "BUSAN".equals(u)) return "PUS";
+        if ("SEL".equals(u) || "서울".equals(v) || "SEOUL".equals(u)) return "SEL";
+        return u;
     }
 }

@@ -1,0 +1,17 @@
+■ 승무원 라인팀 편성 프로그램 - 사용 방법
+
+1. 실행
+   - Windows: start.bat 더블클릭
+   - Mac: start.sh 더블클릭 또는 터미널에서 ./start.sh
+
+2. 브라우저가 자동으로 열리면 그 화면에서 사용하세요.
+   (안 열리면 브라우저 주소창에 http://localhost:8080 입력)
+
+3. 종료
+   - 실행한 검은 창(터미널)을 닫거나, 창에서 Ctrl+C
+
+■ 필요 사항
+   - Java 21 이상 (없으면 https://adoptium.net/ 에서 설치)
+
+■ 이 폴더를 그대로 ZIP으로 압축해서 전달해도 됩니다.
+   받은 사람은 압축 풀고 start.bat(Windows) 또는 start.sh(Mac)만 실행하면 됩니다.

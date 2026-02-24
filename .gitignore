@@ -1,7 +1,9 @@
 # Build / package
 backend/target/
 backend/*.jar
+backend/src/main/resources/static/
 frontend/dist/
+frontend/tsconfig.tsbuildinfo
 node_modules/
 
 # IDE
@@ -20,3 +22,4 @@ Thumbs.db
 
 # JAR/EXE 배포 결과 (선택)
 dist/
+release/*.jar

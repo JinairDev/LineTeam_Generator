@@ -27,11 +27,23 @@ public class CrewLineTeamController {
      */
     @PostMapping("/upload")
     public ResponseEntity<List<CrewMemberDto>> uploadExcel(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("파일을 선택해 주세요.");
+        }
+        String name = file.getOriginalFilename();
+        if (name != null && !name.endsWith(".xlsx") && !name.endsWith(".xls")) {
+            throw new IllegalArgumentException("엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다.");
+        }
         try {
             List<CrewMemberDto> crew = excelService.parseCrewExcel(file.getInputStream());
+            if (crew == null || crew.isEmpty()) {
+                throw new IllegalArgumentException("사번·이름이 있는 데이터 행이 없습니다. 엑셀 첫 행에 헤더(사번, 이름, BASE 등)가 있는지 확인해 주세요.");
+            }
             return ResponseEntity.ok(crew);
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            throw new RuntimeException("엑셀 파싱 중 오류가 발생했습니다. " + (e.getMessage() != null ? e.getMessage() : ""), e);
         }
     }
 
@@ -41,7 +53,10 @@ public class CrewLineTeamController {
     @PostMapping("/assign")
     public ResponseEntity<List<LineTeamDto>> assign(@RequestBody AssignRequest request) {
         if (request == null || request.getCrew() == null) {
-            return ResponseEntity.badRequest().build();
+            throw new IllegalArgumentException("승무원 목록이 없습니다.");
+        }
+        if (request.getCrew().isEmpty()) {
+            throw new IllegalArgumentException("승무원 목록이 비어 있습니다.");
         }
         List<LineTeamDto> teams = teamAssignmentService.assign(
                 request.getCrew(),
@@ -63,10 +78,17 @@ public class CrewLineTeamController {
         String toTeamId = request.getToTeamId();
         Integer toIndex = request.getToIndex();
 
+        if (teams == null || teams.isEmpty()) {
+            throw new IllegalArgumentException("팀 목록이 없습니다.");
+        }
+        if (employeeId == null || employeeId.isBlank()) {
+            throw new IllegalArgumentException("대상 사번이 없습니다.");
+        }
+
         CrewMemberDto member = null;
         int fromIndex = -1;
         for (LineTeamDto t : teams) {
-            if (t.getTeamId().equals(fromTeamId)) {
+            if (t != null && t.getTeamId() != null && t.getTeamId().equals(fromTeamId)) {
                 for (int i = 0; i < t.getMembers().size(); i++) {
                     if (employeeId.equals(t.getMembers().get(i).getEmployeeId())) {
                         member = t.getMembers().get(i);
@@ -80,7 +102,13 @@ public class CrewLineTeamController {
                 }
             }
         }
-        if (member == null) return ResponseEntity.badRequest().build();
+        if (member == null) {
+            throw new IllegalArgumentException("해당 팀에서 사번 " + employeeId + " 인원을 찾을 수 없습니다.");
+        }
+        boolean toTeamExists = teams.stream().anyMatch(t -> t != null && t.getTeamId() != null && t.getTeamId().equals(toTeamId));
+        if (!toTeamExists) {
+            throw new IllegalArgumentException("이동할 팀을 찾을 수 없습니다: " + toTeamId);
+        }
 
         int insertIndex = (toIndex != null && toIndex >= 0)
                 ? toIndex
@@ -107,6 +135,9 @@ public class CrewLineTeamController {
      */
     @PostMapping("/export")
     public ResponseEntity<byte[]> exportExcel(@RequestBody List<LineTeamDto> teams) {
+        if (teams == null || teams.isEmpty()) {
+            throw new IllegalArgumentException("내보낼 팀 목록이 없습니다.");
+        }
         try {
             byte[] bytes = excelService.exportTeamsToExcel(teams);
             HttpHeaders headers = new HttpHeaders();
@@ -114,7 +145,7 @@ public class CrewLineTeamController {
             headers.setContentDispositionFormData("attachment", "라인팀 생성 결과.xlsx");
             return ResponseEntity.ok().headers(headers).body(bytes);
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().build();
+            throw new RuntimeException("엑셀 생성 중 오류가 발생했습니다. " + (e.getMessage() != null ? e.getMessage() : ""), e);
         }
     }
 

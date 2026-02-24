@@ -1,32 +1,41 @@
-# Windows 실행 파일 (EXE)
+# 비개발자 전달용 패키지
 
-## 받는 방법
+이 폴더는 **한 번 빌드한 뒤** 그대로 ZIP으로 압축해 비개발자에게 전달할 때 쓰는 폴더입니다.
 
-### 1) GitHub Actions에서 빌드 후 다운로드 (권장)
+## 폴더에 들어가는 것
 
-1. 저장소 **Actions** 탭 이동: [LineTeam_Generator Actions](https://github.com/davidpiao/LineTeam_Generator/actions)
-2. 왼쪽에서 **"Build Windows EXE"** 워크플로 선택
-3. **"Run workflow"** → **"Run workflow"** 클릭
-4. 빌드가 끝나면(약 5~10분) 해당 실행(run) 클릭
-5. 아래 **Artifacts** 에서 **LineTeam_Generator-Windows** 다운로드
-6. ZIP 압축을 풀면 **.exe** 파일이 있습니다. 실행하면 localhost:8080 에서 서비스됩니다.
+| 파일 | 설명 |
+|------|------|
+| **LineTeam_Generator.jar** | 프론트+백엔드가 합쳐진 실행 파일 하나 (build-release 실행 후 생성됨) |
+| **start.bat** | Windows: 더블클릭하면 프로그램 실행 → localhost:8080 자동 오픈 |
+| **start.sh** | Mac: 더블클릭 또는 터미널에서 `./start.sh` → 동일 |
+| **사용방법.txt** | 받는 사람용 한글 안내 |
 
-### 2) 태그를 붙여 푸시하면 자동으로 Release 생성
+## 개발자: 패키지 만드는 방법
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+프로젝트 루트에서 **한 번만** 실행:
 
-푸시 후 **Releases** 탭에 `v1.0.0` 이 생성되고, 여기서 Windows 실행 파일을 받을 수 있습니다.
+- **Windows**: `build-release.bat`
+- **Mac/Linux**: `./build-release.sh`
+
+→ `release` 폴더에 JAR가 채워지고, 이 폴더 전체를 ZIP으로 압축해 전달하면 됩니다.
+
+## 수신자: 사용 방법
+
+1. ZIP 압축 해제
+2. **Windows**: `start.bat` 더블클릭  
+   **Mac**: `start.sh` 더블클릭 (또는 터미널에서 `./start.sh`)
+3. 브라우저가 자동으로 열리면 http://localhost:8080 에서 사용
+
+**필요:** Java 21 이상 설치 ([Adoptium](https://adoptium.net/) 등)
 
 ---
 
-**직접 빌드**하려면 Windows PC에서:
+## Windows EXE로 배포 (Java 설치 불필요)
 
-```bat
-build-package.bat
-build-exe.bat
-```
+수신자 PC에 Java를 설치하지 않게 하려면, Windows에서 **실행 파일(.exe)** 로 만들어 배포할 수 있습니다.
 
-실행 파일은 `dist` 폴더에 생성됩니다.
+- **만드는 방법**: 프로젝트 루트에서 `build-exe.bat` 실행 → `dist` 폴더에 EXE 생성
+- **받는 방법**: GitHub **Actions** 탭 → Build Windows EXE 워크플로 실행 → Artifacts에서 다운로드
+
+자세한 내용은 프로젝트 루트의 **README.md** → "단일 JAR / EXE로 실행하기" 를 참고하세요.

@@ -10,12 +10,14 @@
 
 1. [사전 요구사항](#사전-요구사항)
 2. [프로젝트 받기](#프로젝트-받기)
-3. [Backend 실행](#backend-실행)
-4. [Frontend 실행](#frontend-실행)
-5. [실행 순서 요약](#실행-순서-요약)
-6. [웹에서 사용 순서](#웹에서-사용-순서)
-7. [문제 해결 (FAQ)](#문제-해결-faq)
-8. [단일 JAR / EXE로 실행하기](#단일-jar--exe로-실행하기)
+3. [**여기서 실행하기 (localhost)**](#여기서-실행하기-localhost) ← 한 번에 localhost에서 실행
+4. [**비개발자 전달용: 한 번 실행으로 localhost**](#비개발자-전달용-한-번-실행으로-localhost-컴파일-없음) ← 컴파일 없이 전달
+5. [Backend 실행](#backend-실행)
+6. [Frontend 실행](#frontend-실행)
+7. [실행 순서 요약](#실행-순서-요약)
+8. [웹에서 사용 순서](#웹에서-사용-순서)
+9. [문제 해결 (FAQ)](#문제-해결-faq)
+10. [단일 JAR / EXE로 실행하기](#단일-jar--exe로-실행하기)
 
 ---
 
@@ -93,6 +95,58 @@ cd crew-line-team
    cd /경로/crew-line-team
    ```
    (예: `cd ~/Downloads/crew-line-team-main`)
+
+---
+
+## 여기서 실행하기 (localhost)
+
+**목표: 이 프로젝트를 localhost에서 한 번에 실행해서 웹으로 사용하기.**
+
+사전 요구사항(Node.js, Java, Maven)을 설치한 뒤, **프로젝트 루트 폴더**에서 아래만 실행하면 됩니다.
+
+| 환경 | 실행 방법 |
+|------|-----------|
+| **Windows** | `run.bat` 더블클릭 또는 명령 프롬프트에서 `run.bat` 입력 |
+| **Mac / Linux** | 터미널에서 `./run.sh` 입력 |
+
+- **JAR가 없으면** 자동으로 `build-package`를 먼저 실행한 뒤 서버를 띄웁니다.
+- 서버가 뜨면 **브라우저가 자동으로 열리고** [http://localhost:8080](http://localhost:8080) 에서 앱을 사용할 수 있습니다.
+- 종료하려면 서버가 돌아가고 있는 터미널에서 **Ctrl+C** 를 누르세요.
+
+---
+
+## 비개발자 전달용: 한 번 실행으로 localhost (컴파일 없음)
+
+**목표: 빌드는 개발자가 한 번만 하고, 받는 사람은 실행 파일 하나(또는 한 번의 실행)만 하면 localhost가 뜨게.**
+
+### 개발자가 할 일 (한 번만)
+
+1. **Windows**에서 프로젝트 루트에 가서:
+   ```bat
+   build-release.bat
+   ```
+2. **Mac/Linux**에서:
+   ```bash
+   chmod +x build-release.sh
+   ./build-release.sh
+   ```
+3. 완료되면 **release** 폴더에 다음이 만들어진다:
+   - `LineTeam_Generator.jar` — 프론트+백엔드가 들어 있는 **실행 파일 하나**
+   - `start.bat` (Windows용), `start.sh` (Mac용) — 더블클릭으로 JAR 실행
+   - `사용방법.txt`
+
+4. **release 폴더 전체**를 ZIP으로 압축해서 비개발자에게 전달.
+
+### 받는 사람(비개발자)이 할 일
+
+1. 전달받은 ZIP 압축 해제
+2. **Windows**: `start.bat` 더블클릭  
+   **Mac**: `start.sh` 더블클릭 (또는 터미널에서 `./start.sh`)
+3. 브라우저가 자동으로 열리면 그대로 사용. (컴파일·빌드·설치 없음)
+
+**필요 조건:** 받는 사람 PC에 **Java 21 이상**만 설치되어 있으면 됩니다. ([Adoptium](https://adoptium.net/) 등에서 설치)
+
+**Java 없이 배포하려면 (Windows만):** [단일 JAR / EXE로 실행하기](#단일-jar--exe로-실행하기)에서 **EXE 파일 만들기**로 `.exe`를 만들면, 수신자는 Java 설치 없이 EXE만 더블클릭하면 됩니다.
 
 ---
 
@@ -254,8 +308,10 @@ chmod +x build-package.sh
    ```
    (JAR가 없으면 `build-package.bat` 이 자동으로 먼저 실행된다.)
 
-- 생성 결과는 **dist** 폴더에 들어갑니다 (`.exe` 또는 설치 프로그램).
-- 설치/실행 후 **localhost:8080** 에서 서비스되며, 브라우저가 자동으로 열립니다.
+- 생성 결과는 **dist** 폴더에 들어갑니다.  
+  - `승무원라인팀편성-1.0.exe` — 비개발자에게 이 파일만 전달하면 됨 (Java 설치 불필요).  
+  - `사용방법-EXE설치후.txt` — 같은 폴더에 있으면 함께 전달하면 좋음.  
+- 수신자는 EXE 더블클릭 → 설치 → "승무원라인팀편성" 실행 → **localhost:8080** 접속 (브라우저 자동 실행).
 
 **필수**
 - **JDK**가 필요합니다. `java -version`만 되고 `jpackage`가 없다면 JDK가 아닌 JRE만 설치된 상태일 수 있습니다. [Adoptium JDK 21](https://adoptium.net/) 등을 설치한 뒤 **JAVA_HOME**을 JDK 설치 경로로 설정하세요.
@@ -274,8 +330,9 @@ chmod +x build-package.sh
 
 | 목표 | 방법 |
 |------|------|
+| **여기서 한 번에 localhost 실행** | **`run.bat`**(Windows) 또는 **`./run.sh`**(Mac/Linux) — JAR 없으면 자동 빌드 후 실행 |
 | 개발 없이 JAR로만 실행 | `build-package.bat`(또는 .sh) → `java -jar backend/target/line-team-assignment-0.0.1-SNAPSHOT.jar` |
-| Windows에서 EXE로 배포 | `build-exe.bat` → dist 폴더의 설치 프로그램 사용 |
+| Windows에서 EXE로 배포 | `build-exe.bat` → dist 폴더의 설치 프로그램 사용 (실행 시 localhost:8080 동일) |
 
 ---
 

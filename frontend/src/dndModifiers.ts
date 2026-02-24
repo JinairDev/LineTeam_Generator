@@ -14,13 +14,13 @@ export const centerUnderCursor: Modifier = ({
   if (!activatorEvent || !rect) return transform
   let clientX = 0
   let clientY = 0
-  if ('clientX' in activatorEvent && 'clientY' in activatorEvent) {
-    const mouseEvent = activatorEvent as MouseEvent
-    clientX = mouseEvent.clientX
-    clientY = mouseEvent.clientY
-  } else if (activatorEvent instanceof TouchEvent && activatorEvent.touches?.[0]) {
-    clientX = activatorEvent.touches[0].clientX
-    clientY = activatorEvent.touches[0].clientY
+  if (activatorEvent && 'clientX' in activatorEvent) {
+    clientX = (activatorEvent as MouseEvent).clientX
+    clientY = (activatorEvent as MouseEvent).clientY
+  } else if (activatorEvent && 'touches' in activatorEvent && (activatorEvent as TouchEvent).touches?.length) {
+    const t = (activatorEvent as TouchEvent).touches[0]
+    clientX = t.clientX
+    clientY = t.clientY
   }
   const offsetX = clientX - rect.left - rect.width / 2
   const offsetY = clientY - rect.top - rect.height / 2

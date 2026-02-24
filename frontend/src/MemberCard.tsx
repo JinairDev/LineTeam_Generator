@@ -27,6 +27,7 @@ function MemberCardInner({
 
   const isTP = member.positionCode?.includes('TP') || member.grade?.includes('TP')
   const isTS = member.positionCode?.includes('TS') || member.grade?.includes('TS')
+  const isLeaveScheduled = member.status?.trim() === '휴직예정'
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (otherTeams.length === 0) return
@@ -37,9 +38,10 @@ function MemberCardInner({
   return (
     <div
       ref={setNodeRef}
-      className={`member-card ${isDragging ? 'dragging' : ''} ${isTP ? 'tp' : ''} ${isTS ? 'ts' : ''}`}
+      className={`member-card ${isDragging ? 'dragging' : ''} ${isTP ? 'tp' : ''} ${isTS ? 'ts' : ''} ${isLeaveScheduled ? 'member-card-leave' : ''}`}
       onContextMenu={handleContextMenu}
     >
+      {isLeaveScheduled && <span className="member-card-status-badge">*휴직예정</span>}
       <div className="member-card-content">
         <div className="member-card-body" {...listeners} {...attributes}>
           <div className="member-id-grade">
@@ -47,7 +49,13 @@ function MemberCardInner({
           </div>
           <div className="member-name">{member.name || '-'}</div>
           <div className="member-meta">
-            {[member.positionCode, member.rank].filter(v => v && v.trim()).join(' · ') || '-'}
+            <span>{member.rank?.trim() || '-'}</span>
+            <span className="member-meta-sep"> · </span>
+            <span>{member.positionCode || '-'}</span>
+            <span className="member-meta-sep"> · </span>
+            <span>{member.annc?.trim() || '-'}</span>
+            <span className="member-meta-sep"> · </span>
+            <span>{member.qualification?.trim() || '-'}</span>
           </div>
         </div>
       </div>

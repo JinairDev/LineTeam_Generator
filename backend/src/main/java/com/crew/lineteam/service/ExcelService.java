@@ -14,149 +14,150 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static java.util.Map.entry;
+
 /**
  * 재직 현황 엑셀 읽기 / 편성 결과 엑셀 쓰기
+ * - 1행(또는 헤더가 있는 행)을 컬럼명으로 인식하고, 그 다음 행부터 데이터로 읽습니다.
+ * - positionCode = Rank 컬럼(TP, TS 등) / rank = 자격 컬럼(LJ, BX, RS 또는 S/A/B/YY 등)
  */
 @Service
 public class ExcelService {
 
-    private static final int HEADER_ROW = 0;
-    private static final int DATA_START_ROW = 1;
+    private static final int MAX_HEADER_SCAN_ROWS = 20;
+    /** 데이터 행 읽을 때, 이 개수만큼 연속으로 비어있으면 읽기 중단 (getLastRowNum 사용 안 함) */
+    private static final int MAX_CONSECUTIVE_EMPTY_ROWS = 50;
+    private static final int MAX_DATA_ROWS = 5_000;
+    private static final int MAX_COLUMNS = 128;
 
     /**
-     * 엑셀 컬럼 헤더 후보 (CPS 라인팀 TEST용 기준: 사번, 이름, 성별, BASE, 직급, FROM, RANK, Qualification, 재직상태 등)
-     * - RANK 컬럼: TP, TS 등 팀장/선임 구분 → positionCode
-     * - Qualification 컬럼: 방송자격 → rank
-     * - 재직상태 컬럼: 재직 상태 → status
+     * 엑셀 컬럼 헤더 후보
+     * - positionCode: Rank 컬럼 (TP, TS) → 팀장/선임 구분
+     * - rank: 자격 컬럼 (LJ, BX, RS 또는 방송자격) → 라인자격/방송자격
      */
-    private static final Map<String, String[]> COLUMN_ALIASES = Map.of(
-            "employeeId", new String[]{"사번", "employeeId", "EMPLOYEE_ID"},
-            "name", new String[]{"이름", "name", "NAME"},
-            "gender", new String[]{"성별", "gender", "GENDER", "성"},
-            "base", new String[]{"BASE", "근거지", "base", "BASE_CD", "지역"},
-            "positionCode", new String[]{"RANK", "Rank", "rank"},  // TP, TS 등 팀장/선임 구분
-            "line", new String[]{"Line", "LINE"},  // 선택적 (없을 수 있음)
-            "grade", new String[]{"직급", "grade", "GRADE", "직급코드"},
-            "status", new String[]{"재직상태", "구분", "status", "STATUS"},
-            "rank", new String[]{"Qualification", "자격", "방송자격", "자격코드"},  // 방송자격
-            "from", new String[]{"FROM", "from", "From"}  // FROM 칼럼: LJ, RS, BX 중 하나
+    private static final Map<String, String[]> COLUMN_ALIASES = Map.ofEntries(
+            entry("employeeId", new String[]{"사번", "employeeId", "EMPLOYEE_ID", "사원번호"}),
+            entry("name", new String[]{"이름", "name", "NAME", "성명"}),
+            entry("gender", new String[]{"성별", "gender", "GENDER", "성"}),
+            entry("base", new String[]{"BASE", "Base", "근거지", "base", "BASE_CD", "지역", "지역코드", "LOCATION", "근무지"}),
+            entry("positionCode", new String[]{"Rank", "RANK", "직위", "직책"}),
+            entry("line", new String[]{"Line", "LINE", "라인"}),
+            entry("grade", new String[]{"직급", "grade", "GRADE", "직급코드"}),
+            entry("status", new String[]{"재직상태", "구분", "status", "STATUS"}),
+            entry("rank", new String[]{"FROM", "자격", "방송자격", "자격코드", "라인자격"}),
+            entry("annc", new String[]{"ANNC", "Annc", "annc"}),
+            entry("qualification", new String[]{"Qualification", "QUALIFICATION", "자격(심사관등)"})
     );
+
+    /** 헤더로 인정할 키워드가 하나라도 있으면 그 행을 헤더로 사용 */
+    private static final String[] HEADER_MARKERS = {"사번", "이름", "Rank", "RANK", "BASE", "직급"};
+
+    private final DataFormatter dataFormatter = new DataFormatter();
 
     /**
      * 엑셀 파일에서 재직 현황(승무원 목록) 파싱
-     * 첫 행은 헤더, 2행부터 데이터. 컬럼명은 위 COLUMN_ALIASES 기준 매칭.
+     * 첫 행 또는 상위 몇 행 중 헤더 행을 찾고, 그 다음 행부터 데이터로 읽습니다.
      */
     public List<CrewMemberDto> parseCrewExcel(InputStream inputStream) throws Exception {
         try (Workbook workbook = new XSSFWorkbook(inputStream)) {
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
             Sheet sheet = workbook.getSheetAt(0);
             if (sheet == null) return List.of();
 
-            Row headerRow = sheet.getRow(HEADER_ROW);
+            int headerRowIndex = findHeaderRow(sheet, evaluator);
+            if (headerRowIndex < 0) return List.of();
+
+            Row headerRow = sheet.getRow(headerRowIndex);
             if (headerRow == null) return List.of();
 
-            // 디버깅: 헤더 칼럼명 출력
-            System.out.println("=== 엑셀 파일 헤더 칼럼 ===");
-            for (int i = 0; i < headerRow.getLastCellNum(); i++) {
-                Cell cell = headerRow.getCell(i);
-                String value = getCellString(cell);
-                System.out.println(String.format("칼럼 %d: %s", i + 1, value != null ? value : "(비어있음)"));
+            Map<String, Integer> colIndex = resolveColumnIndices(headerRow, evaluator);
+            if (colIndex.getOrDefault("employeeId", -1) < 0) {
+                return List.of();
             }
-            System.out.println("===========================");
 
-            Map<String, Integer> colIndex = resolveColumnIndices(headerRow);
-            
-            // 디버깅: 칼럼 인덱스 매핑 확인
-            System.out.println("=== 칼럼 인덱스 매핑 ===");
-            colIndex.forEach((key, idx) -> {
-                if (idx >= 0) {
-                    Cell cell = headerRow.getCell(idx);
-                    String value = getCellString(cell);
-                    System.out.println(String.format("%s -> 인덱스 %d: %s", key, idx, value != null ? value : "(비어있음)"));
-                } else {
-                    System.out.println(String.format("%s -> 매핑되지 않음", key));
-                }
-            });
-            System.out.println("========================");
             List<CrewMemberDto> list = new ArrayList<>();
-            
-            // 사번 컬럼 인덱스 확인
-            int employeeIdColIdx = colIndex.getOrDefault("employeeId", -1);
-            if (employeeIdColIdx < 0) {
-                throw new IllegalArgumentException("사번 컬럼을 찾을 수 없습니다. 엑셀 파일의 헤더에 '사번' 컬럼이 있는지 확인하세요.");
-            }
-            
-            int emptyRowCount = 0; // 연속된 빈 행 카운트
-            final int MAX_EMPTY_ROWS = 5; // 연속된 빈 행이 5개 이상이면 중단
-            int processedRows = 0; // 처리한 행 수 (디버깅용)
-
-            for (int i = DATA_START_ROW; i <= sheet.getLastRowNum(); i++) {
-                Row row = sheet.getRow(i);
-                
-                // 행이 null이면 건너뛰기
+            int consecutiveEmpty = 0;
+            int rowIndex = headerRowIndex + 1;
+            while (rowIndex < MAX_DATA_ROWS && consecutiveEmpty < MAX_CONSECUTIVE_EMPTY_ROWS) {
+                Row row = sheet.getRow(rowIndex);
                 if (row == null) {
-                    emptyRowCount++;
-                    if (emptyRowCount >= MAX_EMPTY_ROWS) {
-                        break;
-                    }
+                    consecutiveEmpty++;
+                    rowIndex++;
                     continue;
                 }
-                
-                // 사번 컬럼만 정확히 체크
-                Cell employeeIdCell = row.getCell(employeeIdColIdx);
-                String employeeId = getCellString(employeeIdCell);
-                
-                // 사번이 없거나 비어있으면 빈 행으로 간주
-                if (employeeId == null || employeeId.trim().isEmpty()) {
-                    emptyRowCount++;
-                    if (emptyRowCount >= MAX_EMPTY_ROWS) {
-                        break;
-                    }
+                CrewMemberDto dto = rowToCrewMember(row, colIndex, evaluator);
+                String eid = dto.getEmployeeId();
+                if (eid == null || eid.isBlank()) {
+                    consecutiveEmpty++;
+                    rowIndex++;
                     continue;
                 }
-                
-                emptyRowCount = 0; // 사번이 있는 행을 만나면 카운트 리셋
-                processedRows++;
-
-                CrewMemberDto dto = rowToCrewMember(row, colIndex);
-                // 사번이 있는 행만 추가 (이미 위에서 체크했지만 다시 확인)
-                if (dto.getEmployeeId() != null && !dto.getEmployeeId().isBlank()) {
-                    list.add(dto);
+                String name = dto.getName();
+                if (name != null) name = name.trim();
+                if (colIndex.getOrDefault("name", -1) >= 0 && (name == null || name.isBlank())) {
+                    consecutiveEmpty++;
+                    rowIndex++;
+                    continue;
                 }
+                list.add(dto);
+                consecutiveEmpty = 0;
+                rowIndex++;
             }
-            
-            // 디버깅 정보 (로깅은 나중에 추가 가능)
-            System.out.println(String.format("[ExcelService] 총 처리 행 수: %d, 승무원 수: %d", processedRows, list.size()));
-            
+
             return list;
         }
     }
 
-    private Map<String, Integer> resolveColumnIndices(Row headerRow) {
+    /** 시트에서 헤더 행 인덱스 찾기. 행을 0부터 직접 순회해 헤더 키워드가 있는 행을 반환. */
+    private int findHeaderRow(Sheet sheet, FormulaEvaluator evaluator) {
+        for (int r = 0; r < MAX_HEADER_SCAN_ROWS; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            for (int c = 0; c < MAX_COLUMNS; c++) {
+                Cell cell = row.getCell(c);
+                if (cell == null) continue;
+                String val = normalizeHeader(getCellString(cell, evaluator));
+                if (val == null || val.isEmpty()) continue;
+                for (String marker : HEADER_MARKERS) {
+                    if (marker.equalsIgnoreCase(val)) return r;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static String normalizeHeader(String s) {
+        if (s == null) return null;
+        return s.trim().replace("\uFEFF", "").replaceAll("\\s+", " ");
+    }
+
+    private Map<String, Integer> resolveColumnIndices(Row headerRow, FormulaEvaluator evaluator) {
         return COLUMN_ALIASES.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        e -> findColumnIndex(headerRow, e.getValue())
+                        e -> findColumnIndex(headerRow, e.getValue(), evaluator)
                 ));
     }
 
-    private int findColumnIndex(Row headerRow, String[] aliases) {
-        for (int i = 0; i < headerRow.getLastCellNum(); i++) {
+    /** 헤더 행에서 컬럼 인덱스 찾기. getLastCellNum()에 의존하지 않고 0~MAX_COLUMNS 직접 순회. */
+    private int findColumnIndex(Row headerRow, String[] aliases, FormulaEvaluator evaluator) {
+        for (int i = 0; i < MAX_COLUMNS; i++) {
             Cell cell = headerRow.getCell(i);
-            String val = getCellString(cell);
-            if (val == null) continue;
-            String trimmed = val.trim();
+            if (cell == null) continue;
+            String val = normalizeHeader(getCellString(cell, evaluator));
+            if (val == null || val.isEmpty()) continue;
             for (String alias : aliases) {
-                if (alias.equalsIgnoreCase(trimmed)) return i;
+                if (alias.equalsIgnoreCase(val)) return i;
             }
         }
         return -1;
     }
 
-    private CrewMemberDto rowToCrewMember(Row row, Map<String, Integer> colIndex) {
+    private CrewMemberDto rowToCrewMember(Row row, Map<String, Integer> colIndex, FormulaEvaluator evaluator) {
         Function<String, String> get = key -> {
             int idx = colIndex.getOrDefault(key, -1);
             if (idx < 0) return null;
-            return getCellString(row.getCell(idx));
+            return getCellString(row.getCell(idx), evaluator);
         };
         String employeeId = get.apply("employeeId");
         if (employeeId != null) employeeId = employeeId.trim();
@@ -164,24 +165,53 @@ public class ExcelService {
                 .employeeId(employeeId)
                 .name(nullToEmpty(get.apply("name")))
                 .gender(nullToEmpty(get.apply("gender")))
-                .base(nullToEmpty(get.apply("base")))
+                .base(normalizeBaseValue(nullToEmpty(get.apply("base"))))
                 .positionCode(nullToEmpty(get.apply("positionCode")))
                 .line(nullToEmpty(get.apply("line")))
                 .grade(nullToEmpty(get.apply("grade")))
                 .status(nullToEmpty(get.apply("status")))
                 .rank(nullToEmpty(get.apply("rank")))
-                .fromColumn(nullToEmpty(get.apply("from")))
+                .annc(nullToEmpty(get.apply("annc")))
+                .qualification(nullToEmpty(get.apply("qualification")))
                 .build();
     }
 
-    private static String getCellString(Cell cell) {
+    /** 셀 값을 문자열로 읽기. 수식 셀은 평가 후, 숫자 셀은 Excel에 보이는 그대로 반환. 행/열 인덱스로 직접 접근. */
+    private String getCellString(Cell cell, FormulaEvaluator evaluator) {
         if (cell == null) return null;
-        return switch (cell.getCellType()) {
-            case STRING -> cell.getStringCellValue();
-            case NUMERIC -> String.valueOf((long) cell.getNumericCellValue());
-            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
-            default -> null;
-        };
+        switch (cell.getCellType()) {
+            case FORMULA:
+                if (evaluator != null) {
+                    try {
+                        CellValue cv = evaluator.evaluate(cell);
+                        if (cv == null) return null;
+                        switch (cv.getCellType()) {
+                            case STRING -> { return cv.getStringValue(); }
+                            case NUMERIC -> { return formatNumeric(cv.getNumberValue()); }
+                            case BOOLEAN -> { return String.valueOf(cv.getBooleanValue()); }
+                            default -> { return null; }
+                        }
+                    } catch (Exception ignored) {
+                        return dataFormatter.formatCellValue(cell);
+                    }
+                }
+                return dataFormatter.formatCellValue(cell);
+            case STRING:
+                return cell.getStringCellValue();
+            case NUMERIC:
+                return dataFormatter.formatCellValue(cell);
+            case BOOLEAN:
+                return String.valueOf(cell.getBooleanCellValue());
+            default:
+                String formatted = dataFormatter.formatCellValue(cell);
+                return formatted == null || formatted.isEmpty() ? null : formatted.trim();
+        }
+    }
+
+    private static String formatNumeric(double value) {
+        long l = (long) value;
+        if (Math.abs(value - l) < 1e-9) return String.valueOf(l);
+        return String.valueOf(value);
     }
 
     private static String nullToEmpty(String s) {
@@ -205,6 +235,21 @@ public class ExcelService {
         return true; // 모든 셀이 비어있음
     }
 
+    /** BASE 값 정규화: PUS/부산 포함 → PUS, SEL/서울 포함 → SEL (팀 ID 통일). 부분 일치·숫자코드(1=SEL,2=PUS) 지원 */
+    private static String normalizeBaseValue(String s) {
+        if (s == null) return "";
+        String v = s.trim().replace("\u00A0", " ").trim();
+        if (v.isEmpty()) return "";
+        String u = v.toUpperCase();
+        if ("2".equals(v) || "02".equals(v) || "2.0".equals(v)) return "PUS";
+        if ("1".equals(v) || "01".equals(v) || "1.0".equals(v)) return "SEL";
+        if (u.contains("PUS") || v.contains("부산") || u.contains("BUSAN")) return "PUS";
+        if (u.contains("SEL") || v.contains("서울") || u.contains("SEOUL")) return "SEL";
+        if ("PUS".equals(u) || "부산".equals(v) || "BUSAN".equals(u)) return "PUS";
+        if ("SEL".equals(u) || "서울".equals(v) || "SEOUL".equals(u)) return "SEL";
+        return v;
+    }
+
     /**
      * 편성 결과를 엑셀 파일로 생성 (바이트 배열 반환)
      */
@@ -223,9 +268,9 @@ public class ExcelService {
                     teamHeader.createCell(c).setCellValue("");
                 }
 
-                // 컬럼 헤더 (승무원 리스트 Test.xlsx와 동일한 순서)
+                // 컬럼 헤더 (사번~구분, FROM, ANNC, Qualification)
                 Row headerRow = sheet.createRow(rowNum++);
-                String[] headers = {"사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "자격", "FROM"};
+                String[] headers = {"사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "FROM", "ANNC", "Qualification"};
                 for (int i = 0; i < headers.length; i++) {
                     Cell cell = headerRow.createCell(i);
                     cell.setCellValue(headers[i]);
@@ -242,13 +287,14 @@ public class ExcelService {
                     row.createCell(5).setCellValue(m.getLine() != null ? m.getLine() : "");
                     row.createCell(6).setCellValue(m.getGrade());
                     row.createCell(7).setCellValue(m.getStatus() != null ? m.getStatus() : "");
-                    row.createCell(8).setCellValue(m.getRank());
-                    row.createCell(9).setCellValue(m.getFromColumn() != null ? m.getFromColumn() : "");
+                    row.createCell(8).setCellValue(m.getRank() != null ? m.getRank() : "");
+                    row.createCell(9).setCellValue(m.getAnnc() != null ? m.getAnnc() : "");
+                    row.createCell(10).setCellValue(m.getQualification() != null ? m.getQualification() : "");
                 }
                 rowNum++; // 팀 간 빈 행
             }
 
-            for (int i = 0; i < 10; i++) {
+            for (int i = 0; i < 11; i++) {
                 sheet.autoSizeColumn(i);
             }
 

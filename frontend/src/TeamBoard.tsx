@@ -9,6 +9,7 @@ import {
   useSensors,
   pointerWithin,
 } from '@dnd-kit/core'
+import type { Active } from '@dnd-kit/core'
 import type { CrewMember, LineTeam } from './types'
 import { TeamColumn } from './TeamColumn'
 import { MemberCardPreview } from './MemberCardPreview'
@@ -34,6 +35,7 @@ type MoveContextMenu = {
 
 export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
   const [moveMenu, setMoveMenu] = useState<MoveContextMenu | null>(null)
+  const [draggingActive, setDraggingActive] = useState<Active | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(
@@ -89,7 +91,7 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
     onMoveMember(payload.member.employeeId, payload.teamId, toTeamId, toIndex)
   }
 
-  const overlayContent = (active: { id: string; data: { current: unknown } } | null): React.ReactElement | null => {
+  const overlayContent = (active: Active | null): React.ReactNode => {
     const payload = active?.data.current as { member: CrewMember; teamId: string } | undefined
     if (!payload) return null
     return <MemberCardPreview member={payload.member} />
@@ -98,7 +100,11 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
   return (
     <DndContext
       sensors={sensors}
-      onDragEnd={handleDragEnd}
+      onDragStart={({ active }) => setDraggingActive(active)}
+      onDragEnd={(e) => {
+        setDraggingActive(null)
+        handleDragEnd(e)
+      }}
       collisionDetection={pointerWithin}
     >
       <div className="team-board">
@@ -141,7 +147,7 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
           modifiers={[centerUnderCursor]}
           zIndex={10000}
         >
-          {overlayContent as any}
+          {overlayContent(draggingActive)}
         </DragOverlay>,
         document.body
       )}
