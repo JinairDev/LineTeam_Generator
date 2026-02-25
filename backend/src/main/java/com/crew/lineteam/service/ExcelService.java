@@ -14,8 +14,11 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static java.util.Map.entry;
+
 /**
  * 재직 현황 엑셀 읽기 / 편성 결과 엑셀 쓰기
+ * - FROM → fromColumn, RANK → positionCode, ANNC → annc, Qualification → qualification(표시) / rank(방송자격)
  */
 @Service
 public class ExcelService {
@@ -24,22 +27,22 @@ public class ExcelService {
     private static final int DATA_START_ROW = 1;
 
     /**
-     * 엑셀 컬럼 헤더 후보 (CPS 라인팀 TEST용 기준: 사번, 이름, 성별, BASE, 직급, FROM, RANK, Qualification, 재직상태 등)
-     * - RANK 컬럼: TP, TS 등 팀장/선임 구분 → positionCode
-     * - Qualification 컬럼: 방송자격 → rank
-     * - 재직상태 컬럼: 재직 상태 → status
+     * 엑셀 컬럼 헤더 후보: FROM, RANK, ANNC, Qualification, 재직상태 등
+     * - RANK → positionCode (TP/TS), FROM → fromColumn (LJ/BX/RS), ANNC → annc, Qualification → rank(방송자격) + qualification(심사관 등)
      */
-    private static final Map<String, String[]> COLUMN_ALIASES = Map.of(
-            "employeeId", new String[]{"사번", "employeeId", "EMPLOYEE_ID"},
-            "name", new String[]{"이름", "name", "NAME"},
-            "gender", new String[]{"성별", "gender", "GENDER", "성"},
-            "base", new String[]{"BASE", "근거지", "base", "BASE_CD", "지역"},
-            "positionCode", new String[]{"RANK", "Rank", "rank"},  // TP, TS 등 팀장/선임 구분
-            "line", new String[]{"Line", "LINE"},  // 선택적 (없을 수 있음)
-            "grade", new String[]{"직급", "grade", "GRADE", "직급코드"},
-            "status", new String[]{"재직상태", "구분", "status", "STATUS"},
-            "rank", new String[]{"Qualification", "자격", "방송자격", "자격코드"},  // 방송자격
-            "from", new String[]{"FROM", "from", "From"}  // FROM 칼럼: LJ, RS, BX 중 하나
+    private static final Map<String, String[]> COLUMN_ALIASES = Map.ofEntries(
+            entry("employeeId", new String[]{"사번", "employeeId", "EMPLOYEE_ID"}),
+            entry("name", new String[]{"이름", "name", "NAME"}),
+            entry("gender", new String[]{"성별", "gender", "GENDER", "성"}),
+            entry("base", new String[]{"BASE", "근거지", "base", "BASE_CD", "지역"}),
+            entry("positionCode", new String[]{"RANK", "Rank", "rank"}),
+            entry("line", new String[]{"Line", "LINE"}),
+            entry("grade", new String[]{"직급", "grade", "GRADE", "직급코드"}),
+            entry("status", new String[]{"재직상태", "구분", "status", "STATUS"}),
+            entry("rank", new String[]{"Qualification", "자격", "방송자격", "자격코드"}),
+            entry("from", new String[]{"FROM", "from", "From"}),
+            entry("annc", new String[]{"ANNC", "Annc", "annc"}),
+            entry("qualification", new String[]{"Qualification", "QUALIFICATION", "자격(심사관등)"})
     );
 
     /**
@@ -170,6 +173,8 @@ public class ExcelService {
                 .grade(nullToEmpty(get.apply("grade")))
                 .status(nullToEmpty(get.apply("status")))
                 .rank(nullToEmpty(get.apply("rank")))
+                .annc(nullToEmpty(get.apply("annc")))
+                .qualification(nullToEmpty(get.apply("qualification")))
                 .build();
         dto.setFromColumn(nullToEmpty(get.apply("from")));
         return dto;
@@ -225,9 +230,9 @@ public class ExcelService {
                     teamHeader.createCell(c).setCellValue("");
                 }
 
-                // 컬럼 헤더 (승무원 리스트 Test.xlsx와 동일한 순서)
+                // 컬럼 헤더: FROM, RANK, ANNC, Qualification 순서에 맞춤
                 Row headerRow = sheet.createRow(rowNum++);
-                String[] headers = {"사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "자격", "FROM"};
+                String[] headers = {"사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "FROM", "ANNC", "Qualification"};
                 for (int i = 0; i < headers.length; i++) {
                     Cell cell = headerRow.createCell(i);
                     cell.setCellValue(headers[i]);
@@ -244,13 +249,14 @@ public class ExcelService {
                     row.createCell(5).setCellValue(m.getLine() != null ? m.getLine() : "");
                     row.createCell(6).setCellValue(m.getGrade());
                     row.createCell(7).setCellValue(m.getStatus() != null ? m.getStatus() : "");
-                    row.createCell(8).setCellValue(m.getRank());
-                    row.createCell(9).setCellValue(m.getFromColumn() != null ? m.getFromColumn() : "");
+                    row.createCell(8).setCellValue(m.getFromColumn() != null ? m.getFromColumn() : "");
+                    row.createCell(9).setCellValue(m.getAnnc() != null ? m.getAnnc() : "");
+                    row.createCell(10).setCellValue(m.getQualification() != null ? m.getQualification() : (m.getRank() != null ? m.getRank() : ""));
                 }
                 rowNum++; // 팀 간 빈 행
             }
 
-            for (int i = 0; i < 10; i++) {
+            for (int i = 0; i < 11; i++) {
                 sheet.autoSizeColumn(i);
             }
 

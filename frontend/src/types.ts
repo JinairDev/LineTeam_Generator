@@ -1,17 +1,18 @@
-/** 승무원 카드 표시: 사번·성별·직급 / 이름 / FROM·RANK·ANNC·Qualification */
+/** 승무원 카드 표시: 사번·성별·직급 / 이름 / FROM·RANK·ANNC·Qualification (API 필드명과 일치) */
 export interface CrewMember {
   employeeId: string
   name: string
   grade: string
-  positionCode?: string  // RANK: TP, TS 등
+  positionCode?: string  // RANK 컬럼 → TP, TS 등
   gender: string
-  rank: string           // FROM: LJ, BX, RS (라인자격)
+  rank?: string          // Qualification(방송자격) - 엑셀 Qualification/자격 컬럼
   base: string
   line?: string
   status?: string
   department?: string
-  annc?: string          // ANNC
-  qualification?: string // Qualification (심사관 등)
+  fromColumn?: string    // FROM 컬럼 → LJ, BX, RS
+  annc?: string          // ANNC 컬럼
+  qualification?: string // Qualification(심사관 등) - 엑셀과 동일 이름
 }
 
 export interface LineTeam {

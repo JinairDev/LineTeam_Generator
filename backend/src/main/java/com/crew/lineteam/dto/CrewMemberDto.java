@@ -26,6 +26,8 @@ public class CrewMemberDto {
     private String status;      // 구분: 재직 등
     private String department;  // 부서 (선택)
     private String fromColumn;  // FROM 칼럼: LJ, RS, BX 중 하나 (필드명 from은 Lombok 빌더와 충돌 가능해 fromColumn 사용)
+    private String annc;        // ANNC 칼럼 (표시용)
+    private String qualification; // Qualification 칼럼 (심사관 등, 표시용)
 
     public String getFromColumn() { return fromColumn; }
     public void setFromColumn(String fromColumn) { this.fromColumn = fromColumn; }

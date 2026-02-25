@@ -22,13 +22,13 @@ function MemberCardPreviewInner({ member }: MemberCardPreviewProps) {
       </div>
       <div className="member-name member-name-floating">{member.name || '-'}</div>
       <div className="member-meta">
-        <span>{member.rank?.trim() || '-'}</span>
+        <span>{(member.fromColumn ?? member.rank)?.trim() || '-'}</span>
         <span className="member-meta-sep"> · </span>
         <span>{member.positionCode || '-'}</span>
         <span className="member-meta-sep"> · </span>
         <span>{member.annc?.trim() || '-'}</span>
         <span className="member-meta-sep"> · </span>
-        <span>{member.qualification?.trim() || '-'}</span>
+        <span>{(member.qualification ?? member.rank)?.trim() || '-'}</span>
       </div>
     </div>
   )
