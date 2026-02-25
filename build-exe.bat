@@ -7,43 +7,55 @@ echo ============================================
 echo   비개발자 전달용 EXE 만들기 (jpackage)
 echo ============================================
 echo.
+if "%1"=="/f" goto needjar
+if "%1"=="rebuild" goto needjar
+if "%1"=="-f" goto needjar
 
-echo [1/2] JAR 준비 중...
-if not exist backend\target\line-team-assignment-0.0.1-SNAPSHOT.jar (
-  echo JAR가 없습니다. 먼저 전체 빌드를 실행합니다.
-  call build-package.bat
-  if errorlevel 1 (
-    echo 빌드 실패. Node.js, Maven, JDK 21 설치 후 다시 시도하세요.
-    exit /b 1
-  )
-) else (
-  echo JAR 있음: backend\target\line-team-assignment-0.0.1-SNAPSHOT.jar
-)
+echo [1/2] JAR prepare...
+if not exist backend\target\line-team-assignment-0.0.1-SNAPSHOT.jar goto needjar
+echo JAR exists. Skip build. To use latest code run: build-exe.bat rebuild
+goto jarready
+:needjar
+echo JAR not found. Running build-package.bat...
+call build-package.bat
+if errorlevel 1 goto buildfail
+goto jarready
+:buildfail
+echo Build failed. Check Node.js, Maven, JDK 21.
+exit /b 1
+:jarready
 
-set JPACKAGE=jpackage
-if defined JAVA_HOME (
-  set "JPACKAGE=%JAVA_HOME%\bin\jpackage.exe"
-  if not exist "%JPACKAGE%" set JPACKAGE=jpackage
-)
+set "JPACKAGE="
+if defined JAVA_HOME if exist "%JAVA_HOME%\bin\jpackage.exe" set "JPACKAGE=%JAVA_HOME%\bin\jpackage.exe"
+if not defined JPACKAGE if exist "D:\plugins\bin\jpackage.exe" set "JPACKAGE=D:\plugins\bin\jpackage.exe"
+if not defined JPACKAGE if exist "C:\Program Files\Java\latest\bin\jpackage.exe" set "JPACKAGE=C:\Program Files\Java\latest\bin\jpackage.exe"
+if not defined JPACKAGE if exist "C:\Program Files\Java\latest\jdk-21\bin\jpackage.exe" set "JPACKAGE=C:\Program Files\Java\latest\jdk-21\bin\jpackage.exe"
+if not defined JPACKAGE if exist "C:\Program Files\Microsoft\jdk-21.0.10.7-hotspot\bin\jpackage.exe" set "JPACKAGE=C:\Program Files\Microsoft\jdk-21.0.10.7-hotspot\bin\jpackage.exe"
+if not defined JPACKAGE if exist "C:\Program Files\Eclipse Adoptium\jdk-21\bin\jpackage.exe" set "JPACKAGE=C:\Program Files\Eclipse Adoptium\jdk-21\bin\jpackage.exe"
+if not defined JPACKAGE if exist "C:\Program Files\Java\jdk-21\bin\jpackage.exe" set "JPACKAGE=C:\Program Files\Java\jdk-21\bin\jpackage.exe"
 
-where %JPACKAGE% >nul 2>&1
-if errorlevel 1 (
-  echo.
-  echo [오류] jpackage를 찾을 수 없습니다.
-  echo JDK 14 이상(권장: JDK 21)을 설치한 뒤:
-  echo   - JAVA_HOME 을 설정하거나
-  echo   - PATH에 JDK\bin 을 추가하세요.
-  echo 예: set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21
-  exit /b 1
-)
+if defined JPACKAGE goto havejpackage
+where jpackage.exe >nul 2>&1
+if errorlevel 1 goto nojpackage
+set "JPACKAGE=jpackage.exe"
+goto havejpackage
+:nojpackage
+echo.
+echo [ERROR] jpackage not found. JDK 21 needed - JRE is not enough.
+echo Set JAVA_HOME to JDK folder that has bin\jpackage.exe
+echo Example: set JAVA_HOME=D:\plugins
+echo Then run build-exe.bat again in a NEW cmd window.
+exit /b 1
+:havejpackage
 
 echo.
-echo [2/2] EXE 설치 프로그램 생성 중 (JRE 포함, 1~2분 소요)...
+echo [2/2] Creating app-image with jpackage - no WiX required...
 if not exist dist mkdir dist
+if exist "dist\승무원라인팀편성" rmdir /s /q "dist\승무원라인팀편성"
 
-rem JAR 매니페스트의 Main-Class(JarLauncher) 사용. --main-class 생략.
-%JPACKAGE% ^
-  --type exe ^
+rem app-image = folder with exe launcher. exe/msi need WiX Toolset.
+"%JPACKAGE%" ^
+  --type app-image ^
   --name "승무원라인팀편성" ^
   --app-version 1.0 ^
   --input backend\target ^
@@ -52,29 +64,27 @@ rem JAR 매니페스트의 Main-Class(JarLauncher) 사용. --main-class 생략.
   --win-console ^
   --java-options "-Dserver.port=8080"
 
-if errorlevel 1 (
-  echo.
-  echo [오류] jpackage 실행 실패. JDK 21 권장.
-  exit /b 1
-)
+if errorlevel 1 goto jpackagefail
+goto jpackagedone
+:jpackagefail
+echo.
+echo [ERROR] jpackage failed. Use JDK 21.
+exit /b 1
+:jpackagedone
 
-if exist "사용방법-EXE설치후.txt" copy /Y "사용방법-EXE설치후.txt" "dist\사용방법-EXE설치후.txt" >nul
+if exist "사용방법-EXE설치후.txt" copy /Y "사용방법-EXE설치후.txt" "dist\승무원라인팀편성\사용방법-EXE설치후.txt" >nul 2>&1
 
 echo.
 echo ============================================
-echo   완료
+echo   Done
 echo ============================================
 echo.
-echo   dist\ 폴더에 다음 파일이 생성되었습니다:
-echo     - 승무원라인팀편성-1.0.exe  (설치 프로그램)
+echo   Output: dist\승무원라인팀편성\
+echo     - Run: 승무원라인팀편성.exe
 echo.
-echo   비개발자에게 전달하는 방법:
-echo     1. dist\승무원라인팀편성-1.0.exe 만 전달 (또는 dist 폴더 전체 압축)
-echo     2. 받은 사람은 EXE 더블클릭 → 설치 → 설치된 "승무원라인팀편성" 실행
-echo     3. 실행 후 브라우저에서 http://localhost:8080 접속
-echo        (자동으로 브라우저가 열리지 않으면 위 주소를 직접 입력)
-echo.
-echo   ※ 수신자 PC에는 Java 설치 불필요 (EXE에 JRE 포함됨)
+echo   To share: zip dist\승무원라인팀편성 folder, send zip.
+echo   User: unzip, run 승무원라인팀편성.exe, open http://localhost:8080
+echo   Java not required on user PC.
 echo.
 pause
 exit /b 0
