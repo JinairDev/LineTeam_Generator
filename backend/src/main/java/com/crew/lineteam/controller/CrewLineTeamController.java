@@ -2,8 +2,10 @@ package com.crew.lineteam.controller;
 
 import com.crew.lineteam.dto.AssignRequest;
 import com.crew.lineteam.dto.CrewMemberDto;
+import com.crew.lineteam.dto.GoogleSpreadsheetImportRequest;
 import com.crew.lineteam.dto.LineTeamDto;
 import com.crew.lineteam.service.ExcelService;
+import com.crew.lineteam.service.GoogleSpreadsheetImportService;
 import com.crew.lineteam.service.TeamAssignmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -12,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.StringReader;
 import java.util.List;
 
 @RestController
@@ -20,6 +23,7 @@ import java.util.List;
 public class CrewLineTeamController {
 
     private final ExcelService excelService;
+    private final GoogleSpreadsheetImportService googleSpreadsheetImportService;
     private final TeamAssignmentService teamAssignmentService;
 
     /**
@@ -48,6 +52,49 @@ public class CrewLineTeamController {
     }
 
     /**
+     * 1. 재직 현황: Google 스프레드시트(공개 링크)에서 CSV로 가져와 파싱
+     */
+    @PostMapping("/upload-from-google")
+    public ResponseEntity<List<CrewMemberDto>> uploadFromGoogle(@RequestBody GoogleSpreadsheetImportRequest body) {
+        if (body == null || body.getSpreadsheetUrl() == null || body.getSpreadsheetUrl().isBlank()) {
+            throw new IllegalArgumentException("Google 스프레드시트 URL 또는 ID를 입력해 주세요.");
+        }
+        try {
+            List<CrewMemberDto> crew = googleSpreadsheetImportService.importFromUrlOrId(body.getSpreadsheetUrl());
+            return ResponseEntity.ok(crew);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Google 스프레드시트를 불러오는 중 오류가 발생했습니다. "
+                            + (e.getMessage() != null ? e.getMessage() : ""),
+                    e);
+        }
+    }
+
+    /**
+     * 1. 재직 현황: 이미 받은 CSV 텍스트(브라우저·프록시 등) 파싱
+     */
+    @PostMapping(value = "/upload-csv", consumes = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<List<CrewMemberDto>> uploadCsv(@RequestBody String csvBody) {
+        if (csvBody == null || csvBody.isBlank()) {
+            throw new IllegalArgumentException("CSV 내용이 비어 있습니다.");
+        }
+        try {
+            List<CrewMemberDto> crew = excelService.parseCrewCsv(new StringReader(csvBody));
+            if (crew == null || crew.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "사번·이름이 있는 데이터 행이 없습니다. 첫 행에 헤더(사번, 이름, BASE 등)가 있는지 확인해 주세요.");
+            }
+            return ResponseEntity.ok(crew);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("CSV 파싱 중 오류가 발생했습니다. " + (e.getMessage() != null ? e.getMessage() : ""), e);
+        }
+    }
+
+    /**
      * 2. 편성 실행: 승무원 목록과 선택적 지역별 팀 수를 받아 라인팀 목록 반환
      */
     @PostMapping("/assign")
@@ -58,10 +105,24 @@ public class CrewLineTeamController {
         if (request.getCrew().isEmpty()) {
             throw new IllegalArgumentException("승무원 목록이 비어 있습니다.");
         }
-        List<LineTeamDto> teams = teamAssignmentService.assign(
-                request.getCrew(),
-                request.getTeamCountByBase()
-        );
+        if (request.getPinMode() != null
+                && (request.getPreviousTeams() == null || request.getPreviousTeams().isEmpty())) {
+            throw new IllegalArgumentException("재편성(고정)에는 이전 팀 정보(previousTeams)가 필요합니다.");
+        }
+        List<LineTeamDto> teams;
+        if (request.getPinMode() != null && request.getPreviousTeams() != null && !request.getPreviousTeams().isEmpty()) {
+            teams = teamAssignmentService.assign(
+                    request.getCrew(),
+                    request.getTeamCountByBase(),
+                    request.getPreviousTeams(),
+                    request.getPinMode()
+            );
+        } else {
+            teams = teamAssignmentService.assign(
+                    request.getCrew(),
+                    request.getTeamCountByBase()
+            );
+        }
         return ResponseEntity.ok(teams);
     }
 

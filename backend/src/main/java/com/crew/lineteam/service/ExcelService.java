@@ -6,8 +6,11 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.Reader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -134,6 +137,108 @@ public class ExcelService {
         }
     }
 
+    /**
+     * CSV(구글 스프레드시트 내보내기 등)에서 재직 현황 파싱. 첫 행은 헤더, 엑셀과 동일한 컬럼 규칙.
+     * 줄 단위 파싱(셀 내 줄바꿈은 미지원).
+     */
+    public List<CrewMemberDto> parseCrewCsv(Reader reader) throws IOException {
+        try (BufferedReader br = new BufferedReader(reader)) {
+            String firstLine = br.readLine();
+            if (firstLine == null) {
+                return List.of();
+            }
+            if (firstLine.startsWith("\uFEFF")) {
+                firstLine = firstLine.substring(1);
+            }
+            List<String> headers = parseCsvLine(firstLine);
+            for (int i = 0; i < headers.size(); i++) {
+                headers.set(i, headers.get(i).trim());
+            }
+
+            Map<String, Integer> colIndex = resolveColumnIndicesFromHeaders(headers);
+            int employeeIdColIdx = colIndex.getOrDefault("employeeId", -1);
+            if (employeeIdColIdx < 0) {
+                throw new IllegalArgumentException("사번 컬럼을 찾을 수 없습니다. 첫 행 헤더에 '사번' 컬럼이 있는지 확인해 주세요.");
+            }
+
+            List<CrewMemberDto> list = new ArrayList<>();
+            int emptyRowCount = 0;
+            final int maxEmptyRows = 5;
+            int processedRows = 0;
+
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                List<String> cells = parseCsvLine(line);
+                String employeeId = getListCell(cells, employeeIdColIdx);
+                if (employeeId == null || employeeId.trim().isEmpty()) {
+                    emptyRowCount++;
+                    if (emptyRowCount >= maxEmptyRows) {
+                        break;
+                    }
+                    continue;
+                }
+                emptyRowCount = 0;
+                processedRows++;
+
+                CrewMemberDto dto = crewMemberFromColumnValues(colIndex, key -> {
+                    int idx = colIndex.getOrDefault(key, -1);
+                    if (idx < 0) {
+                        return null;
+                    }
+                    return getListCell(cells, idx);
+                });
+                if (dto.getEmployeeId() != null && !dto.getEmployeeId().isBlank()) {
+                    list.add(dto);
+                }
+            }
+
+            System.out.println(String.format("[ExcelService CSV] 총 처리 행 수: %d, 승무원 수: %d", processedRows, list.size()));
+            return list;
+        }
+    }
+
+    /** RFC 4180 스타일 한 줄 파싱(쉼표·따옴표). */
+    static List<String> parseCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (inQuotes) {
+                if (c == '"') {
+                    if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                        sb.append('"');
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    sb.append(c);
+                }
+            } else {
+                if (c == '"') {
+                    inQuotes = true;
+                } else if (c == ',') {
+                    fields.add(sb.toString());
+                    sb.setLength(0);
+                } else {
+                    sb.append(c);
+                }
+            }
+        }
+        fields.add(sb.toString());
+        return fields;
+    }
+
+    private static String getListCell(List<String> row, int idx) {
+        if (idx < 0 || idx >= row.size()) return null;
+        String v = row.get(idx);
+        return v == null ? null : v.trim();
+    }
+
     private Map<String, Integer> resolveColumnIndices(Row headerRow) {
         return COLUMN_ALIASES.entrySet().stream()
                 .collect(Collectors.toMap(
@@ -155,12 +260,35 @@ public class ExcelService {
         return -1;
     }
 
+    private Map<String, Integer> resolveColumnIndicesFromHeaders(List<String> headers) {
+        return COLUMN_ALIASES.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> findColumnIndexInList(headers, e.getValue())
+                ));
+    }
+
+    private int findColumnIndexInList(List<String> headers, String[] aliases) {
+        for (int i = 0; i < headers.size(); i++) {
+            String val = headers.get(i);
+            if (val == null) continue;
+            String trimmed = val.trim();
+            for (String alias : aliases) {
+                if (alias.equalsIgnoreCase(trimmed)) return i;
+            }
+        }
+        return -1;
+    }
+
     private CrewMemberDto rowToCrewMember(Row row, Map<String, Integer> colIndex) {
-        Function<String, String> get = key -> {
+        return crewMemberFromColumnValues(colIndex, key -> {
             int idx = colIndex.getOrDefault(key, -1);
             if (idx < 0) return null;
             return getCellString(row.getCell(idx));
-        };
+        });
+    }
+
+    private CrewMemberDto crewMemberFromColumnValues(Map<String, Integer> colIndex, Function<String, String> get) {
         String employeeId = get.apply("employeeId");
         if (employeeId != null) employeeId = employeeId.trim();
         CrewMemberDto dto = CrewMemberDto.builder()

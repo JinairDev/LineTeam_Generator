@@ -7,8 +7,14 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8765',
         changeOrigin: true,
+      },
+      // 개발 시 Node가 Google CSV를 받아 전달(SASE 환경에서 Java PKIX와 별도로 시도)
+      '/google-sheets-csv': {
+        target: 'https://docs.google.com',
+        changeOrigin: true,
+        secure: false,
       },
     },
   },

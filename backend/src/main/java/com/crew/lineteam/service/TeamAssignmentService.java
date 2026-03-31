@@ -2,6 +2,7 @@ package com.crew.lineteam.service;
 
 import com.crew.lineteam.dto.CrewMemberDto;
 import com.crew.lineteam.dto.LineTeamDto;
+import com.crew.lineteam.dto.PinMode;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -23,21 +24,14 @@ public class TeamAssignmentService {
         if (allCrew == null || allCrew.isEmpty()) return List.of();
 
         List<CrewMemberDto> tps = allCrew.stream().filter(CrewMemberDto::isTP).toList();
-        List<CrewMemberDto> tss = allCrew.stream().filter(CrewMemberDto::isTS).toList();
-        List<CrewMemberDto> others = allCrew.stream()
-                .filter(c -> !c.isTP() && !c.isTS())
-                .collect(Collectors.toList());
-
         Map<String, List<CrewMemberDto>> tpByBase = tps.stream().collect(Collectors.groupingBy(c -> normalizeBase(c.getBase())));
         List<LineTeamDto> teams = new ArrayList<>();
-        List<CrewMemberDto> extraTps = new ArrayList<>();
 
         for (Map.Entry<String, List<CrewMemberDto>> e : tpByBase.entrySet()) {
             String base = e.getKey();
             List<CrewMemberDto> baseTps = new ArrayList<>(e.getValue());
             Collections.shuffle(baseTps);
 
-            // 팀 수 = TP 인원 수 (무조건)
             int teamCount = baseTps.size();
             if (teamCount <= 0) continue;
 
@@ -52,19 +46,115 @@ public class TeamAssignmentService {
                         .build());
             }
         }
-        others.addAll(extraTps);
 
-        // TS 배정: TP 자격 규칙 (TP=LJ → TS는 LJ/BX/RS 가능, TP=BX/RS → TS는 LJ만)
+        Set<String> assignedIds = new HashSet<>();
+        teams.forEach(t -> t.getMembers().forEach(m -> assignedIds.add(m.getEmployeeId())));
+
+        assignTsAndOthers(teams, allCrew, assignedIds);
+        return teams;
+    }
+
+    /**
+     * 직전 편성 결과를 기준으로 고정 범위만 두고 나머지를 다시 배치합니다.
+     */
+    public List<LineTeamDto> assign(
+            List<CrewMemberDto> allCrew,
+            Map<String, Integer> teamCountByBase,
+            List<LineTeamDto> previousTeams,
+            PinMode pinMode) {
+        if (allCrew == null || allCrew.isEmpty()) return List.of();
+        if (previousTeams == null || previousTeams.isEmpty() || pinMode == null) {
+            return assign(allCrew, teamCountByBase);
+        }
+
+        Map<String, CrewMemberDto> byId = allCrew.stream()
+                .collect(Collectors.toMap(CrewMemberDto::getEmployeeId, c -> c, (a, b) -> a));
+
+        List<LineTeamDto> teams = new ArrayList<>();
+        Set<String> assignedIds = new HashSet<>();
+
+        for (LineTeamDto prev : previousTeams) {
+            List<CrewMemberDto> keep = new ArrayList<>();
+            for (CrewMemberDto m : prev.getMembers()) {
+                CrewMemberDto c = byId.get(m.getEmployeeId());
+                if (c == null) continue;
+                if (pinMode == PinMode.BOTH_FIXED) {
+                    if (c.isTP() || c.isTS()) keep.add(c);
+                } else if (pinMode == PinMode.TP_FIXED) {
+                    if (c.isTP()) keep.add(c);
+                } else if (pinMode == PinMode.TS_FIXED) {
+                    if (c.isTS()) keep.add(c);
+                }
+            }
+            LineTeamDto team = LineTeamDto.builder()
+                    .teamId(prev.getTeamId())
+                    .base(prev.getBase())
+                    .indexInBase(prev.getIndexInBase())
+                    .members(new ArrayList<>(keep))
+                    .build();
+            teams.add(team);
+            keep.forEach(x -> assignedIds.add(x.getEmployeeId()));
+        }
+
+        if (pinMode == PinMode.BOTH_FIXED) {
+            assignOthersPhase(teams, allCrew);
+            return teams;
+        }
+
+        if (pinMode == PinMode.TS_FIXED) {
+            List<CrewMemberDto> tpPool = allCrew.stream()
+                    .filter(CrewMemberDto::isTP)
+                    .filter(c -> !assignedIds.contains(c.getEmployeeId()))
+                    .collect(Collectors.toCollection(ArrayList::new));
+            Collections.shuffle(tpPool);
+            for (LineTeamDto team : teams) {
+                boolean hasTp = team.getMembers().stream().anyMatch(CrewMemberDto::isTP);
+                if (hasTp) continue;
+                CrewMemberDto pick = pickTpForBase(tpPool, team.getBase());
+                if (pick != null) {
+                    team.getMembers().add(pick);
+                    assignedIds.add(pick.getEmployeeId());
+                }
+            }
+        }
+
+        assignTsAndOthers(teams, allCrew, assignedIds);
+        return teams;
+    }
+
+    private static CrewMemberDto pickTpForBase(List<CrewMemberDto> tpPool, String teamBase) {
+        String nb = normalizeBase(teamBase);
+        for (int i = 0; i < tpPool.size(); i++) {
+            CrewMemberDto c = tpPool.get(i);
+            if (normalizeBase(c.getBase()).equals(nb)) {
+                return tpPool.remove(i);
+            }
+        }
+        if (!tpPool.isEmpty()) {
+            return tpPool.remove(0);
+        }
+        return null;
+    }
+
+    /**
+     * 팀에 TP가 배치된 뒤 TS·기타 인원을 배정합니다. {@code assignedIds}에는 팀에 이미 들어간 인원이 포함되어야 합니다.
+     */
+    private void assignTsAndOthers(List<LineTeamDto> teams, List<CrewMemberDto> allCrew, Set<String> assignedIds) {
+        List<CrewMemberDto> tss = allCrew.stream()
+                .filter(CrewMemberDto::isTS)
+                .filter(c -> !assignedIds.contains(c.getEmployeeId()))
+                .collect(Collectors.toList());
+
         List<CrewMemberDto> tsLj = tss.stream().filter(CrewMemberDto::isLineQualificationLJ).collect(Collectors.toList());
         List<CrewMemberDto> tsOther = tss.stream().filter(t -> !t.isLineQualificationLJ()).collect(Collectors.toList());
         Collections.shuffle(tsLj);
         Collections.shuffle(tsOther);
 
         Map<String, List<LineTeamDto>> teamsByBaseForTs = teams.stream().collect(Collectors.groupingBy(LineTeamDto::getBase));
-        // 1) BX/RS TP 팀에는 LJ TS만 배정 (같은 BASE만), 1명씩
         for (LineTeamDto team : teams) {
+            if (team.getMembers().stream().anyMatch(CrewMemberDto::isTS)) continue;
             CrewMemberDto tp = team.getMembers().stream().filter(CrewMemberDto::isTP).findFirst().orElse(null);
-            if (tp == null || !tp.isLineQualificationBX() && !tp.isLineQualificationRS()) continue;
+            if (tp == null || (!tp.isLineQualificationBX() && !tp.isLineQualificationRS())) continue;
             String base = team.getBase();
             CrewMemberDto toAdd = null;
             for (CrewMemberDto ts : tsLj) {
@@ -78,7 +168,7 @@ public class TeamAssignmentService {
                 team.getMembers().add(toAdd);
             }
         }
-        // 2) 나머지 TS를 규칙에 맞게 같은 BASE 팀에만 배정, 팀별 TS 수 균등 배분 (자격 규칙 준수)
+
         List<CrewMemberDto> tsRemaining = new ArrayList<>();
         tsRemaining.addAll(tsLj);
         tsRemaining.addAll(tsOther);
@@ -100,7 +190,19 @@ public class TeamAssignmentService {
             if (team != null) team.getMembers().add(ts);
         }
 
-        // 나머지 인원: 지역(BASE)별로만 배정, 같은 지역 내에서는 팀에 균등 배분
+        assignOthersPhase(teams, allCrew);
+    }
+
+    /**
+     * TP/TS를 제외한 인원만 팀에 배정합니다. 팀에 이미 들어 있는 TP/TS는 유지됩니다.
+     */
+    private void assignOthersPhase(List<LineTeamDto> teams, List<CrewMemberDto> allCrew) {
+        Set<String> assignedIds = new HashSet<>();
+        teams.forEach(t -> t.getMembers().forEach(m -> assignedIds.add(m.getEmployeeId())));
+
+        List<CrewMemberDto> others = allCrew.stream()
+                .filter(c -> !c.isTP() && !c.isTS())
+                .collect(Collectors.toList());
         List<CrewMemberDto> otherPool = new ArrayList<>(others);
         Collections.shuffle(otherPool);
 
@@ -108,7 +210,7 @@ public class TeamAssignmentService {
         Map<String, List<CrewMemberDto>> byRank = otherPool.stream().collect(Collectors.groupingBy(c -> nullToDefault(c.getRank())));
         List<CrewMemberDto> flatPool = buildBalancedPool(otherPool, byGrade, byRank);
 
-        Set<String> assignedIds = new HashSet<>();
+        assignedIds.clear();
         teams.forEach(t -> t.getMembers().forEach(m -> assignedIds.add(m.getEmployeeId())));
 
         Map<String, List<LineTeamDto>> teamsByBase = teams.stream().collect(Collectors.groupingBy(LineTeamDto::getBase));
@@ -120,27 +222,23 @@ public class TeamAssignmentService {
             List<LineTeamDto> baseTeams = teamsByBase.get(base);
             if (baseTeams == null) baseTeams = teams;
             int startIdx = nextTeamIndexByBase.getOrDefault(base, 0);
-            
-            // 먼저 MAX_TEAM_SIZE 이하인 팀 찾기
+
             LineTeamDto team = findTeamWithCapacity(baseTeams, startIdx, MAX_TEAM_SIZE);
-            
-            // 같은 지역에 자리가 없으면 다른 지역 팀에도 배정 시도
+
             if (team == null) {
                 team = findTeamWithCapacity(teams, 0, MAX_TEAM_SIZE);
             }
-            
-            // 그래도 없으면 팀 크기 제한을 완화하여 배정 (최대 20명까지)
+
             if (team == null) {
                 team = findTeamWithCapacity(baseTeams, 0, MAX_TEAM_SIZE + 5);
             }
-            
-            // 여전히 없으면 모든 팀 중 가장 적은 인원의 팀에 배정
+
             if (team == null && !teams.isEmpty()) {
                 team = teams.stream()
                         .min(Comparator.comparingInt(LineTeamDto::getMemberCount))
                         .orElse(null);
             }
-            
+
             if (team != null) {
                 team.getMembers().add(c);
                 assignedIds.add(c.getEmployeeId());
@@ -149,70 +247,61 @@ public class TeamAssignmentService {
             }
         }
 
-        // 모든 승무원이 배정되었는지 확인
         Set<String> allCrewIds = allCrew.stream().map(CrewMemberDto::getEmployeeId).collect(Collectors.toSet());
         Set<String> unassignedIds = new HashSet<>(allCrewIds);
         unassignedIds.removeAll(assignedIds);
-        
+
         if (!unassignedIds.isEmpty()) {
             System.err.println(String.format("[TeamAssignmentService] 경고: %d명의 승무원이 배정되지 않았습니다.", unassignedIds.size()));
-            
-            // 배정 실패 원인 분석
+
             System.out.println(String.format("[TeamAssignmentService] 팀 현황: 총 %d개 팀", teams.size()));
             for (LineTeamDto team : teams) {
                 System.out.println(String.format("  - %s: %d명 (최대: %d)", team.getTeamId(), team.getMemberCount(), MAX_TEAM_SIZE));
             }
-            
-            // 남은 승무원을 가능한 팀에 강제 배정
-            final Set<String> finalUnassignedIds = new HashSet<>(unassignedIds); // final 복사본 생성
+
+            final Set<String> finalUnassignedIds = new HashSet<>(unassignedIds);
             List<CrewMemberDto> unassigned = allCrew.stream()
                     .filter(c -> finalUnassignedIds.contains(c.getEmployeeId()))
                     .collect(Collectors.toList());
-            
+
             for (CrewMemberDto c : unassigned) {
                 String base = nullToDefault(c.getBase());
                 List<LineTeamDto> baseTeams = teamsByBase.get(base);
                 if (baseTeams == null) baseTeams = teams;
-                
-                // 같은 지역 팀에 배정 시도 (크기 제한 완화)
+
                 LineTeamDto team = findTeamWithCapacity(baseTeams, 0, MAX_TEAM_SIZE + 10);
-                
-                // 같은 지역에 없으면 다른 지역 팀에도 배정
+
                 if (team == null) {
                     team = findTeamWithCapacity(teams, 0, MAX_TEAM_SIZE + 10);
                 }
-                
-                // 그래도 없으면 가장 적은 인원의 팀에 배정
+
                 if (team == null && !teams.isEmpty()) {
                     team = teams.stream()
                             .min(Comparator.comparingInt(LineTeamDto::getMemberCount))
                             .orElse(null);
                 }
-                
+
                 if (team != null) {
                     team.getMembers().add(c);
                     assignedIds.add(c.getEmployeeId());
-                    System.out.println(String.format("[TeamAssignmentService] 강제 배정: %s (%s) → %s", 
+                    System.out.println(String.format("[TeamAssignmentService] 강제 배정: %s (%s) → %s",
                             c.getName(), c.getEmployeeId(), team.getTeamId()));
                 } else {
-                    System.err.println(String.format("[TeamAssignmentService] 심각: %s (%s)를 배정할 수 없습니다.", 
+                    System.err.println(String.format("[TeamAssignmentService] 심각: %s (%s)를 배정할 수 없습니다.",
                             c.getName(), c.getEmployeeId()));
                 }
             }
         }
-        
-        // 최종 검증: 모든 승무원이 배정되었는지 확인
+
         allCrewIds = allCrew.stream().map(CrewMemberDto::getEmployeeId).collect(Collectors.toSet());
         unassignedIds = new HashSet<>(allCrewIds);
         unassignedIds.removeAll(assignedIds);
         if (!unassignedIds.isEmpty()) {
-            System.err.println(String.format("[TeamAssignmentService] 심각: 여전히 %d명의 승무원이 배정되지 않았습니다: %s", 
+            System.err.println(String.format("[TeamAssignmentService] 심각: 여전히 %d명의 승무원이 배정되지 않았습니다: %s",
                     unassignedIds.size(), unassignedIds));
         } else {
             System.out.println(String.format("[TeamAssignmentService] 성공: 모든 승무원(%d명)이 배정되었습니다.", allCrew.size()));
         }
-
-        return teams;
     }
 
     private LineTeamDto findTeamWithCapacity(List<LineTeamDto> teams, int startIdx, int maxSize) {

@@ -21,4 +21,8 @@ public class AssignRequest {
     private List<CrewMemberDto> crew;
     /** 지역(BASE)별 팀 개수. 예: {"SEL": 5, "PUS": 3} */
     private Map<String, Integer> teamCountByBase;
+    /** 재편성 시 고정 모드. 없으면 전체 초기 편성 */
+    private PinMode pinMode;
+    /** 재편성 시 기준으로 삼을 직전 편성 결과 팀 목록 */
+    private List<LineTeamDto> previousTeams;
 }
