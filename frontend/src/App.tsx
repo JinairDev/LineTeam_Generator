@@ -25,6 +25,7 @@ function App() {
   const [googleUrl, setGoogleUrl] = useState('')
   const [googleAccountEmail, setGoogleAccountEmail] = useState<string | null>(null)
   const [uploadedExcelName, setUploadedExcelName] = useState<string | null>(null)
+  const [csvPasteText, setCsvPasteText] = useState('')
   const [selectedPinMode, setSelectedPinMode] = useState<PinMode | null>(null)
 
   const applyCrewAndAssign = useCallback(async (list: import('./types').CrewMember[]) => {
@@ -81,8 +82,34 @@ function App() {
     setTeams([])
     setCrew([])
     setUploadedExcelName(null)
+    setCsvPasteText('')
     setError(null)
   }, [])
+
+  const onCsvPasteSubmit = useCallback(async () => {
+    const text = csvPasteText.trim()
+    if (!text) {
+      setError('CSV 내용을 붙여넣어 주세요.')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const list = await uploadCrewCsvText(text)
+      if (list.length === 0) {
+        setLoading(false)
+        return
+      }
+      setUploadedExcelName('CSV 붙여넣기')
+      setCrew(list)
+      setTeams([])
+      setStep('review')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'CSV 처리 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }, [csvPasteText])
 
   const onGoogleImport = useCallback(async () => {
     const url = googleUrl.trim()
@@ -225,7 +252,10 @@ function App() {
         {step === 'upload' && (
           <section className="section card">
             <h2>재직 현황 불러오기</h2>
-            <p className="section-desc">엑셀 파일 불러오기 후, 아래 두 가지 방식 중 하나를 선택하세요.</p>
+            <p className="section-desc">
+              엑셀 업로드가 보안 프로그램으로 막히면 <strong>CSV 붙여넣기</strong> 또는{' '}
+              <strong>Google 스프레드시트</strong>를 이용해 보세요.
+            </p>
 
             <div className="import-options">
               <div className="import-option">
@@ -272,6 +302,30 @@ function App() {
                     {loading ? '가져오는 중…' : '가져오기'}
                   </button>
                 </div>
+              </div>
+
+              <div className="import-option">
+                <h3>CSV 붙여넣기</h3>
+                <p>
+                  엑셀에서 영역을 복사(Ctrl+C)한 뒤 아래에 붙여넣기 하세요. 파일 저장·업로드가 필요 없습니다.
+                </p>
+                <textarea
+                  className="csv-paste-textarea"
+                  placeholder="첫 행은 헤더(사번, 이름, BASE …), 탭 또는 쉼표 구분"
+                  value={csvPasteText}
+                  onChange={(e) => setCsvPasteText(e.target.value)}
+                  disabled={loading}
+                  rows={6}
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  className="btn btn-large btn-primary"
+                  onClick={onCsvPasteSubmit}
+                  disabled={loading}
+                >
+                  {loading ? '처리 중…' : '붙여넣은 내용 불러오기'}
+                </button>
               </div>
             </div>
           </section>

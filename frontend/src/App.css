@@ -88,7 +88,7 @@
 
 .import-options {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 0.85rem;
 }
 
@@ -211,6 +211,32 @@
 
 .google-import-btn {
   flex-shrink: 0;
+}
+
+.csv-paste-textarea {
+  width: 100%;
+  min-height: 7rem;
+  padding: 0.6rem 0.75rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.csv-paste-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.csv-paste-textarea:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
 }
 
 @media (max-width: 900px) {

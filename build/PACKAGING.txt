@@ -21,25 +21,49 @@
 
 실행 후 브라우저에서 http://localhost:8765
 
-JAR만 필요할 때
---------------
-  cd backend
-  mvn package -Pbundle-frontend -DskipTests
+JAR만 필요할 때 (UI 포함)
+------------------------
+저장소 루트에서 (권장: npm 빌드까지 한 번에):
 
-  java -jar target\line-team-assignment-0.0.1-SNAPSHOT.jar
+  ./build/package-jar.sh
+
+수동으로 할 때는 반드시 먼저 frontend 에서 npm ci && npm run build 한 뒤:
+
+  cd backend
+  mvn package -Pbundle-frontend
+
+  java -jar target/line-team-assignment-0.0.1-SNAPSHOT.jar
+
+회사망에서 PKIX / certificate_unknown (Maven Central HTTPS 실패)
+----------------------------------------------------------------
+JVM이 SSL 검사(프록시) 인증서를 신뢰하지 못할 때 나옵니다.
+
+권장: IT 안내로 회사 루트 CA를 JDK cacerts에 등록 (keytool importcert).
+
+임시 (신뢰할 수 있는 사내망에서만): Maven Resolver HTTPS 검증 완화
+
+  cp build/maven-corp-pkix.env.example build/maven-corp-pkix.env
+  # maven-corp-pkix.env 안에서 export 줄 주석 해제:
+  #   export LINE_TEAM_MAVEN_OPTS="-Daether.connector.https.securityMode=insecure"
+  ./build/package-jar.sh
+
+또는 다른 네트워크에서 한 번 mvn으로 ~/.m2를 채운 뒤:
+
+  MAVEN_OFFLINE=1 ./build/package-jar.sh
 
 설치 마법사형 단일 exe
 ---------------------
 WiX Toolset 설치 후 build\package-windows-installer.bat
 (실패하면 app-image 방식만 사용해도 됩니다.)
 
-Mac에서 개발만 할 때
--------------------
-exe는 Windows에서 빌드하세요. Mac에서는 JAR만:
+Mac에서 JAR 빌드
+----------------
+exe는 Windows에서 빌드하세요. Mac에서는:
 
-  cd backend && mvn package -Pbundle-frontend -DskipTests && java -jar target/*.jar
+  ./build/package-jar.sh
 
 참고
 ----
-· 프로파일 bundle-frontend 없이 mvn package 하면 API만 있는 JAR이며, UI는 포함되지 않습니다.
+· 프로파일 bundle-frontend 는 frontend/dist 를 JAR에 넣습니다. npm 빌드는 스크립트에서 먼저 실행합니다.
+· bundle-frontend 없이 mvn package 만 하면 API만 있는 JAR이며, UI는 포함되지 않습니다.
 · Spring Boot 3.x fat JAR의 엔트리는 org.springframework.boot.loader.launch.JarLauncher 입니다.

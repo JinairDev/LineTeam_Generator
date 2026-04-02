@@ -6,6 +6,15 @@ cd /d "%~dp0\.."
 set "ROOT=%cd%"
 set "JAR=line-team-assignment-0.0.1-SNAPSHOT.jar"
 
+REM PKIX(회사망) 시 예: set LINE_TEAM_MAVEN_OPTS=-Daether.connector.https.securityMode=insecure
+if defined LINE_TEAM_MAVEN_OPTS (
+  if defined MAVEN_OPTS (
+    set "MAVEN_OPTS=%MAVEN_OPTS% %LINE_TEAM_MAVEN_OPTS%"
+  ) else (
+    set "MAVEN_OPTS=%LINE_TEAM_MAVEN_OPTS%"
+  )
+)
+
 where npm >nul 2>&1
 if errorlevel 1 (
   echo [오류] npm을 찾을 수 없습니다. Node.js 20 이상 설치 후 PATH에 등록하세요.
@@ -18,8 +27,21 @@ if errorlevel 1 (
 )
 
 echo.
-echo [1/2] Maven package ^(-Pbundle-frontend: React 빌드 후 JAR에 포함^)...
-call mvn -f "%ROOT%\backend\pom.xml" package -Pbundle-frontend -DskipTests
+echo [1/3] frontend: npm ci ^&^& npm run build ...
+pushd "%ROOT%\frontend"
+call npm ci
+if errorlevel 1 popd & exit /b 1
+call npm run build
+if errorlevel 1 popd & exit /b 1
+popd
+if not exist "%ROOT%\frontend\dist\index.html" (
+  echo [오류] frontend\dist 가 없습니다.
+  exit /b 1
+)
+
+echo.
+echo [2/3] Maven package ^(-Pbundle-frontend: dist를 JAR에 포함^)...
+call mvn -f "%ROOT%\backend\pom.xml" package -Pbundle-frontend
 if errorlevel 1 exit /b 1
 
 if not exist "%ROOT%\backend\target\%JAR%" (
@@ -46,7 +68,7 @@ if exist "%DEST%" rmdir /s /q "%DEST%"
 mkdir "%DEST%" 2>nul
 
 echo.
-echo [2/2] jpackage ^(app-image: 설치형 .exe 폴더 생성, WiX 불필요^)...
+echo [3/3] jpackage ^(app-image: 설치형 .exe 폴더 생성, WiX 불필요^)...
 
 jpackage ^
   --type app-image ^

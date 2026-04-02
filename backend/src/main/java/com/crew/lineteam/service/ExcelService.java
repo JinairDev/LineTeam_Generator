@@ -200,8 +200,18 @@ public class ExcelService {
         }
     }
 
-    /** RFC 4180 스타일 한 줄 파싱(쉼표·따옴표). */
+    /**
+     * 한 줄 파싱: 엑셀 복사·붙여넣기는 탭 구분, CSV 내보내기는 쉼표(RFC 4180) 구분.
+     */
     static List<String> parseCsvLine(String line) {
+        if (line.indexOf('\t') >= 0) {
+            String[] parts = line.split("\t", -1);
+            List<String> fields = new ArrayList<>(parts.length);
+            for (String p : parts) {
+                fields.add(p);
+            }
+            return fields;
+        }
         List<String> fields = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
         boolean inQuotes = false;

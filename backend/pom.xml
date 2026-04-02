@@ -66,52 +66,21 @@
         </plugins>
     </build>
 
-    <!-- 프론트 빌드 후 static에 넣어 단일 JAR/EXE로 배포: mvn package -Pbundle-frontend -->
+    <!--
+      bundle-frontend: frontend/dist 를 classpath:/static 에 복사 (npm 빌드는 스크립트에서 먼저 실행)
+      회사망 PKIX 이슈 시 exec-maven-plugin 등 추가 플러그인 다운로드를 피하기 위함.
+    -->
     <profiles>
         <profile>
             <id>bundle-frontend</id>
+            <properties>
+                <maven.test.skip>true</maven.test.skip>
+            </properties>
             <build>
                 <plugins>
                     <plugin>
-                        <groupId>org.codehaus.mojo</groupId>
-                        <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.5.0</version>
-                        <executions>
-                            <execution>
-                                <id>npm-ci</id>
-                                <phase>generate-resources</phase>
-                                <goals>
-                                    <goal>exec</goal>
-                                </goals>
-                                <configuration>
-                                    <executable>npm</executable>
-                                    <workingDirectory>${project.basedir}/../frontend</workingDirectory>
-                                    <arguments>
-                                        <argument>ci</argument>
-                                    </arguments>
-                                </configuration>
-                            </execution>
-                            <execution>
-                                <id>npm-build</id>
-                                <phase>generate-resources</phase>
-                                <goals>
-                                    <goal>exec</goal>
-                                </goals>
-                                <configuration>
-                                    <executable>npm</executable>
-                                    <workingDirectory>${project.basedir}/../frontend</workingDirectory>
-                                    <arguments>
-                                        <argument>run</argument>
-                                        <argument>build</argument>
-                                    </arguments>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-resources-plugin</artifactId>
-                        <version>3.3.1</version>
                         <executions>
                             <execution>
                                 <id>copy-frontend-dist</id>
