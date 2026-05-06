@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import type { CrewMember, LineTeam } from './types'
+import { memberHasLeaveStyleStatus, memberStatusBadgeText } from './memberStatusUi'
 
 interface MemberCardProps {
   member: CrewMember
@@ -27,7 +28,8 @@ function MemberCardInner({
 
   const isTP = member.positionCode?.includes('TP') || member.grade?.includes('TP')
   const isTS = member.positionCode?.includes('TS') || member.grade?.includes('TS')
-  const isLeaveScheduled = member.status?.trim() === '휴직예정'
+  const leaveStyle = memberHasLeaveStyleStatus(member.status)
+  const statusBadge = memberStatusBadgeText(member.status)
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (otherTeams.length === 0) return
@@ -38,10 +40,10 @@ function MemberCardInner({
   return (
     <div
       ref={setNodeRef}
-      className={`member-card ${isDragging ? 'dragging' : ''} ${isTP ? 'tp' : ''} ${isTS ? 'ts' : ''} ${isLeaveScheduled ? 'member-card-leave' : ''}`}
+      className={`member-card ${isDragging ? 'dragging' : ''} ${isTP ? 'tp' : ''} ${isTS ? 'ts' : ''} ${leaveStyle ? 'member-card-leave' : ''}`}
       onContextMenu={handleContextMenu}
     >
-      {isLeaveScheduled && <span className="member-card-status-badge">*휴직예정</span>}
+      {statusBadge && <span className="member-card-status-badge">{statusBadge}</span>}
       <div className="member-card-content">
         <div className="member-card-body" {...listeners} {...attributes}>
           <div className="member-id-grade">

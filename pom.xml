@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.crew</groupId>
+    <artifactId>line-team-generator-root</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Line Team Generator (root)</name>
+    <description>루트 리액터 — Backend 모듈만 포함. 루트에서: mvn spring-boot:run -pl backend</description>
+
+    <modules>
+        <module>backend</module>
+    </modules>
+</project>

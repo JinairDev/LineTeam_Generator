@@ -47,13 +47,25 @@ jobs:
           cd backend
           mvn package -DskipTests -q
 
-      - name: Create EXE with jpackage
+      # 로컬 build-exe.bat 과 동일: app-image (WiX 없이 폴더+실행파일). 단일 exe 설치형은 WiX 필요.
+      - name: Create Windows app bundle (jpackage app-image)
         run: |
-          New-Item -ItemType Directory -Force -Path dist
-          cd backend
-          jpackage --type exe --name "LineTeam_Generator" --input target --main-jar line-team-assignment-0.0.1-SNAPSHOT.jar --main-class com.crew.lineteam.CrewLineTeamApplication --dest ..\dist --win-console --java-options "-Dcrew.lineteam.openBrowser=true"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          if (Test-Path "dist\승무원라인팀편성") { Remove-Item -Recurse -Force "dist\승무원라인팀편성" }
+          jpackage `
+            --type app-image `
+            --name "승무원라인팀편성" `
+            --app-version 1.0 `
+            --input backend/target `
+            --main-jar line-team-assignment-0.0.1-SNAPSHOT.jar `
+            --dest dist `
+            --win-console `
+            --java-options "-Dserver.port=8080"
+          if (Test-Path "사용방법-EXE설치후.txt") {
+            Copy-Item -Force "사용방법-EXE설치후.txt" "dist\승무원라인팀편성\사용방법-EXE설치후.txt"
+          }
 
-      - name: Upload EXE artifact
+      - name: Upload Windows bundle artifact
         uses: actions/upload-artifact@v4
         with:
           name: LineTeam_Generator-Windows

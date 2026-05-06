@@ -7,6 +7,7 @@ import {
   assignTeams,
   moveMember,
   exportExcel,
+  type ExportMemberSort,
   type PinMode,
 } from './api'
 import { fetchGoogleSheetCsvWithSelectedAccount } from './googleSheetsOAuth'
@@ -27,6 +28,7 @@ function App() {
   const [uploadedExcelName, setUploadedExcelName] = useState<string | null>(null)
   const [csvPasteText, setCsvPasteText] = useState('')
   const [selectedPinMode, setSelectedPinMode] = useState<PinMode | null>(null)
+  const [exportMemberSort, setExportMemberSort] = useState<ExportMemberSort>('employeeId')
 
   const applyCrewAndAssign = useCallback(async (list: import('./types').CrewMember[]) => {
     if (list.length === 0) return
@@ -216,7 +218,7 @@ function App() {
     if (teams.length === 0) return
     setError(null)
     try {
-      const blob = await exportExcel(teams)
+      const blob = await exportExcel(teams, { sort: exportMemberSort })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -226,7 +228,7 @@ function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '엑셀 추출 중 오류가 발생했습니다.')
     }
-  }, [teams])
+  }, [teams, exportMemberSort])
 
   return (
     <div className="app">
@@ -388,7 +390,22 @@ function App() {
           <section className="section">
             <div className="section-header">
               <h2>편성 결과</h2>
-              <div className="section-actions">
+              <div className="section-actions section-actions-export">
+                <label className="export-sort-label">
+                  <span className="export-sort-text">엑셀 행 순서</span>
+                  <select
+                    className="export-sort-select"
+                    value={exportMemberSort}
+                    onChange={(e) =>
+                      setExportMemberSort(e.target.value as ExportMemberSort)
+                    }
+                    disabled={loading}
+                    aria-label="엑셀 추출 시 팀 내 행 정렬"
+                  >
+                    <option value="employeeId">사번순</option>
+                    <option value="grade">직급순 (TP→TS→SP…→사번)</option>
+                  </select>
+                </label>
                 <button
                   type="button"
                   className="btn btn-large"

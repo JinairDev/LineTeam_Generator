@@ -93,4 +93,15 @@ public class CrewMemberDto {
         if (tp.isLineQualificationBX() || tp.isLineQualificationRS()) return isLineQualificationLJ();
         return true;
     }
+
+    /**
+     * 라인 편성에서 제외할 재직상태(구분 컬럼).
+     * 재직·휴직예정·단기휴직 등은 편성에 포함하고, 차출·휴직만 제외.
+     */
+    public boolean isExcludedFromLineAssignment() {
+        if (status == null || status.isBlank()) return false;
+        String s = status.trim();
+        return "차출".equals(s) || "휴직".equals(s);
+    }
 }
+

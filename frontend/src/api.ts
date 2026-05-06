@@ -4,13 +4,14 @@ import { devGoogleCsvProxyUrl, parseGoogleSheetUrl } from './googleSheetExport'
 const API = '/api'
 
 async function parseErrorResponse(res: Response, defaultMsg: string): Promise<string> {
+  const text = await res.text()
+  if (!text) return defaultMsg
   try {
-    const text = await res.text()
-    if (!text) return defaultMsg
     const json = JSON.parse(text) as { message?: string }
     return typeof json?.message === 'string' && json.message.trim() ? json.message.trim() : defaultMsg
   } catch {
-    return defaultMsg
+    const snippet = text.trim().slice(0, 400)
+    return snippet ? `${defaultMsg} (${snippet})` : defaultMsg
   }
 }
 
@@ -42,11 +43,10 @@ export async function uploadExcel(file: File): Promise<CrewMember[]> {
 export async function uploadCrewCsvText(csv: string): Promise<CrewMember[]> {
   let res: Response
   try {
-    res = await fetch(`${API}/upload-csv`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: csv,
-    })
+    // multipart: JSON에 CSV를 넣으면 이스케이프로 본문이 커지고 특수문자로 500이 날 수 있어 엑셀 업로드와 동일 방식 사용
+    const form = new FormData()
+    form.append('file', new Blob([csv], { type: 'text/csv;charset=utf-8' }), 'paste.csv')
+    res = await fetch(`${API}/upload-csv`, { method: 'POST', body: form })
   } catch (e) {
     throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.')
   }
@@ -140,10 +140,18 @@ export async function moveMember(
   return handleResponse(res, '이동 실패', () => res.json())
 }
 
-export async function exportExcel(teams: LineTeam[]): Promise<Blob> {
+/** 엑셀 팀별 행 정렬 (백엔드 `sort` 쿼리와 동일) */
+export type ExportMemberSort = 'employeeId' | 'grade'
+
+export async function exportExcel(
+  teams: LineTeam[],
+  options?: { sort?: ExportMemberSort }
+): Promise<Blob> {
+  const sort = options?.sort === 'grade' ? 'grade' : 'employeeId'
+  const q = `?sort=${encodeURIComponent(sort)}`
   let res: Response
   try {
-    res = await fetch(`${API}/export`, {
+    res = await fetch(`${API}/export${q}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(teams),

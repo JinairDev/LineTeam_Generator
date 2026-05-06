@@ -14,7 +14,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -73,10 +75,36 @@ public class CrewLineTeamController {
     }
 
     /**
-     * 1. 재직 현황: 이미 받은 CSV 텍스트(브라우저·프록시 등) 파싱
+     * 1. 재직 현황: 이미 받은 CSV 텍스트 파싱.
+     * - {@code multipart/form-data}: 붙여넣기·대용량에 권장(JSON 이스케이프로 본문이 비대해지거나 500이 나는 경우 방지)
+     * - {@code application/json}: 호환용
+     * - {@code text/plain}: 호환용
      */
+    @PostMapping(value = "/upload-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<List<CrewMemberDto>> uploadCsvMultipart(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("CSV 파일이 비어 있습니다.");
+        }
+        try {
+            String csvBody = new String(file.getBytes(), StandardCharsets.UTF_8);
+            return uploadCsvResponse(csvBody);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("CSV를 읽을 수 없습니다.", e);
+        }
+    }
+
+    @PostMapping(value = "/upload-csv", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<CrewMemberDto>> uploadCsvJson(@RequestBody CsvTextRequest body) {
+        String csvBody = body != null ? body.getCsv() : null;
+        return uploadCsvResponse(csvBody);
+    }
+
     @PostMapping(value = "/upload-csv", consumes = MediaType.TEXT_PLAIN_VALUE)
-    public ResponseEntity<List<CrewMemberDto>> uploadCsv(@RequestBody String csvBody) {
+    public ResponseEntity<List<CrewMemberDto>> uploadCsvPlain(@RequestBody String csvBody) {
+        return uploadCsvResponse(csvBody);
+    }
+
+    private ResponseEntity<List<CrewMemberDto>> uploadCsvResponse(String csvBody) {
         if (csvBody == null || csvBody.isBlank()) {
             throw new IllegalArgumentException("CSV 내용이 비어 있습니다.");
         }
@@ -90,7 +118,10 @@ public class CrewLineTeamController {
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("CSV 파싱 중 오류가 발생했습니다. " + (e.getMessage() != null ? e.getMessage() : ""), e);
+            throw new IllegalArgumentException(
+                    "CSV 파싱 중 오류가 발생했습니다. "
+                            + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()),
+                    e);
         }
     }
 
@@ -195,12 +226,14 @@ public class CrewLineTeamController {
      * 4. 편성 결과 엑셀 다운로드
      */
     @PostMapping("/export")
-    public ResponseEntity<byte[]> exportExcel(@RequestBody List<LineTeamDto> teams) {
+    public ResponseEntity<byte[]> exportExcel(
+            @RequestBody List<LineTeamDto> teams,
+            @RequestParam(value = "sort", required = false) String sort) {
         if (teams == null || teams.isEmpty()) {
             throw new IllegalArgumentException("내보낼 팀 목록이 없습니다.");
         }
         try {
-            byte[] bytes = excelService.exportTeamsToExcel(teams);
+            byte[] bytes = excelService.exportTeamsToExcel(teams, ExcelService.ExportMemberSort.fromQueryParam(sort));
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
             headers.setContentDispositionFormData("attachment", "라인팀 생성 결과.xlsx");
@@ -208,6 +241,12 @@ public class CrewLineTeamController {
         } catch (Exception e) {
             throw new RuntimeException("엑셀 생성 중 오류가 발생했습니다. " + (e.getMessage() != null ? e.getMessage() : ""), e);
         }
+    }
+
+    @lombok.Data
+    public static class CsvTextRequest {
+        /** CSV 전체 문자열 */
+        private String csv;
     }
 
     @lombok.Data

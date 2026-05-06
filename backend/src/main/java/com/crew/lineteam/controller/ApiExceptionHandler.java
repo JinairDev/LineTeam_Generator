@@ -3,12 +3,15 @@ package com.crew.lineteam.controller;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 
+import java.util.Arrays;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * API 전역 에러 처리: 항상 JSON { "message": "..." } 반환
@@ -54,6 +57,21 @@ public class ApiExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("message", "요청 본문이 올바르지 않습니다. JSON 형식을 확인해 주세요."));
+    }
+
+    /**
+     * GET으로 /api/... POST 전용 주소를 연 경우, 또는 사내망이 POST를 GET으로 바꾸는 경우 등
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, String>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        String allowed = e.getSupportedMethods() != null
+                ? Arrays.stream(e.getSupportedMethods()).sorted().collect(Collectors.joining(", "))
+                : "POST 등";
+        String msg = "허용된 메서드는 " + allowed + " 입니다. "
+                + "브라우저 주소창에 /api/... 를 직접 입력하면 이 오류가 납니다. "
+                + "앱 화면의 버튼으로만 사용해 주세요. "
+                + "같은 현상이 반복되면 사내망·프록시가 POST 요청을 바꾸는지 IT에 문의해 주세요.";
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(Map.of("message", msg));
     }
 
     @ExceptionHandler(Exception.class)

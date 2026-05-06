@@ -12,7 +12,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -350,14 +352,42 @@ public class ExcelService {
         return true; // 모든 셀이 비어있음
     }
 
+    /** 엑셀 추출 시 팀 내 승무원 행 정렬 방식 */
+    public enum ExportMemberSort {
+        /** 사번 오름차순 (숫자로 파싱되면 숫자 비교) */
+        EMPLOYEE_ID,
+        /**
+         * 직급·역할 순: 팀장(TP) → 사무장(TS) → 기타, 이후 README 조건과 동일한 SP·PS·AP·SS·ID·IS 토큰 순,
+         * 동일하면 사번 오름차순
+         */
+        GRADE;
+
+        public static ExportMemberSort fromQueryParam(String s) {
+            if (s == null || s.isBlank()) return EMPLOYEE_ID;
+            String u = s.trim().toLowerCase(Locale.ROOT);
+            if ("grade".equals(u) || "직급".equals(u)) return GRADE;
+            return EMPLOYEE_ID;
+        }
+    }
+
     /**
-     * 편성 결과를 엑셀 파일로 생성 (바이트 배열 반환)
+     * 편성 결과를 엑셀 파일로 생성 (바이트 배열 반환). 팀 내 행은 사번 오름차순.
      */
     public byte[] exportTeamsToExcel(List<LineTeamDto> teams) throws Exception {
+        return exportTeamsToExcel(teams, ExportMemberSort.EMPLOYEE_ID);
+    }
+
+    /**
+     * 편성 결과를 엑셀 파일로 생성 (바이트 배열 반환)
+     *
+     * @param memberSort 팀별 멤버 행 출력 순서
+     */
+    public byte[] exportTeamsToExcel(List<LineTeamDto> teams, ExportMemberSort memberSort) throws Exception {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("라인팀 편성 결과");
             CellStyle headerStyle = createHeaderStyle(workbook);
             int rowNum = 0;
+            ExportMemberSort sort = memberSort != null ? memberSort : ExportMemberSort.EMPLOYEE_ID;
 
             for (LineTeamDto team : teams) {
                 // 팀 헤더 행
@@ -377,7 +407,10 @@ public class ExcelService {
                     cell.setCellStyle(headerStyle);
                 }
 
-                for (CrewMemberDto m : team.getMembers()) {
+                List<CrewMemberDto> membersOut = new ArrayList<>(team.getMembers());
+                sortMembersForExport(membersOut, sort);
+
+                for (CrewMemberDto m : membersOut) {
                     Row row = sheet.createRow(rowNum++);
                     row.createCell(0).setCellValue(m.getEmployeeId());
                     row.createCell(1).setCellValue(m.getName());
@@ -409,5 +442,58 @@ public class ExcelService {
         font.setBold(true);
         style.setFont(font);
         return style;
+    }
+
+    /** README 직급 균등 조건과 동일한 토큰 순 (앞일수록 상위로 정렬) */
+    private static final String[] GRADE_TOKENS_ORDER = {"SP", "PS", "AP", "SS", "ID", "IS"};
+
+    private static void sortMembersForExport(List<CrewMemberDto> members, ExportMemberSort sort) {
+        if (members == null || members.size() <= 1) return;
+        Comparator<String> byEmpId = ExcelService::compareEmployeeIdStrings;
+        Comparator<CrewMemberDto> cmp = switch (sort) {
+            case GRADE -> Comparator
+                    .comparingInt(ExcelService::exportRoleOrder)
+                    .thenComparingInt(ExcelService::gradeTokenOrder)
+                    .thenComparing(ExcelService::compareKeysEmployeeId, byEmpId);
+            case EMPLOYEE_ID -> Comparator.comparing(ExcelService::compareKeysEmployeeId, byEmpId);
+        };
+        members.sort(cmp);
+    }
+
+    /** TP → TS → 기타 */
+    private static int exportRoleOrder(CrewMemberDto m) {
+        if (m.isTP()) return 0;
+        if (m.isTS()) return 1;
+        return 2;
+    }
+
+    /**
+     * 직급·Rank 컬럼 문자열에서 SP/PS/AP/SS/ID/IS 중 가장 앞선(우선순위 높은) 코드 인덱스.
+     * 없으면 맨 뒤로.
+     */
+    private static int gradeTokenOrder(CrewMemberDto m) {
+        String hay = (nullToEmpty(m.getGrade()) + " " + nullToEmpty(m.getPositionCode()))
+                .toUpperCase(Locale.ROOT);
+        int best = GRADE_TOKENS_ORDER.length;
+        for (int i = 0; i < GRADE_TOKENS_ORDER.length; i++) {
+            if (hay.contains(GRADE_TOKENS_ORDER[i])) {
+                best = Math.min(best, i);
+            }
+        }
+        return best;
+    }
+
+    private static String compareKeysEmployeeId(CrewMemberDto m) {
+        return m.getEmployeeId() == null ? "" : m.getEmployeeId().trim();
+    }
+
+    private static int compareEmployeeIdStrings(String a, String b) {
+        if (a == null || a.isEmpty()) return (b == null || b.isEmpty()) ? 0 : -1;
+        if (b == null || b.isEmpty()) return 1;
+        try {
+            return Long.compare(Long.parseLong(a), Long.parseLong(b));
+        } catch (NumberFormatException e) {
+            return a.compareTo(b);
+        }
     }
 }

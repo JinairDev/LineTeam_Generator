@@ -7,6 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
+        // backend application.properties 의 server.port 와 같아야 함. ECONNREFUSED → 백엔드 미실행 또는 포트 불일치
         target: 'http://localhost:8765',
         changeOrigin: true,
       },

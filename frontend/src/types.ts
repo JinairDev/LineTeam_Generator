@@ -16,6 +16,7 @@ export interface CrewMember {
 }
 
 export interface LineTeam {
+  /** SEL: A101~…, PUS: B101~… 등 백엔드 규칙 */
   teamId: string
   base: string
   indexInBase: number

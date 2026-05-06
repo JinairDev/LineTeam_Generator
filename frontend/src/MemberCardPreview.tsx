@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import type { CrewMember } from './types'
+import { memberHasLeaveStyleStatus, memberStatusBadgeText } from './memberStatusUi'
 
 interface MemberCardPreviewProps {
   member: CrewMember
@@ -8,15 +9,16 @@ interface MemberCardPreviewProps {
 function MemberCardPreviewInner({ member }: MemberCardPreviewProps) {
   const isTP = member.positionCode?.includes('TP') || member.grade?.includes('TP')
   const isTS = member.positionCode?.includes('TS') || member.grade?.includes('TS')
-  const isLeaveScheduled = member.status?.trim() === '휴직예정'
+  const leaveStyle = memberHasLeaveStyleStatus(member.status)
+  const statusBadge = memberStatusBadgeText(member.status)
 
   return (
     <div
-      className={`member-card member-card-floating ${isTP ? 'tp' : ''} ${isTS ? 'ts' : ''} ${isLeaveScheduled ? 'member-card-leave' : ''}`}
+      className={`member-card member-card-floating ${isTP ? 'tp' : ''} ${isTS ? 'ts' : ''} ${leaveStyle ? 'member-card-leave' : ''}`}
       role="presentation"
     >
       <div className="member-card-floating-badge">이동 중</div>
-      {isLeaveScheduled && <span className="member-card-status-badge">*휴직예정</span>}
+      {statusBadge && <span className="member-card-status-badge">{statusBadge}</span>}
       <div className="member-id-grade">
         {member.employeeId} · {member.gender || '-'} · {member.grade || '-'}
       </div>

@@ -298,6 +298,32 @@
   gap: 0.75rem;
 }
 
+.section-actions-export {
+  flex-wrap: wrap;
+}
+
+.export-sort-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.export-sort-text {
+  white-space: nowrap;
+}
+
+.export-sort-select {
+  min-width: 11rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
 .stats {
   margin-top: 1rem;
   display: flex;

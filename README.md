@@ -154,7 +154,17 @@ cd crew-line-team
 
 Backend(Spring Boot)가 먼저 떠 있어야 Frontend에서 API를 사용할 수 있습니다.
 
-### 1단계: backend 폴더로 이동
+### 1단계: backend 폴더로 이동 (또는 루트에서 바로 실행)
+
+**방법 A — 권장 (프로젝트 루트에서):** Mac/Linux는 `./run-backend.sh`, Windows는 `run-backend.bat` 을 실행합니다. (내부에서 `backend` 기준으로 `mvn spring-boot:run` 을 호출합니다.)
+
+**방법 B — 루트에 `pom.xml`이 있을 때:** 프로젝트 루트에서 아래처럼 **모듈만 지정**해 실행합니다.
+
+```bash
+mvn spring-boot:run -pl backend
+```
+
+**방법 C — 수동으로 backend 로 이동:**
 
 **반드시 프로젝트 루트(`crew-line-team`)에서** 아래를 실행하세요.
 
@@ -163,6 +173,8 @@ cd backend
 ```
 
 ### 2단계: Backend 서버 실행
+
+**`backend` 폴더에 있는 상태에서:**
 
 ```bash
 mvn spring-boot:run
@@ -196,13 +208,24 @@ cd /경로/crew-line-team
 
 (앞에서 `git clone` 이나 ZIP 압축 해제한 `crew-line-team` 폴더 경로로 이동)
 
-### 2단계: frontend 폴더로 이동
+### 2단계: frontend 폴더로 이동 (또는 루트에서 실행)
+
+**방법 A — 프로젝트 루트에서:** 루트에 `package.json`이 있으면 아래만으로 됩니다.
+
+```bash
+npm install --prefix frontend
+npm run dev
+```
+
+**방법 B — `frontend` 폴더로 이동:**
 
 ```bash
 cd frontend
 ```
 
 ### 3단계: 의존성 설치 (최초 1회만)
+
+`frontend` 안에 있는 경우:
 
 ```bash
 npm install
@@ -212,6 +235,10 @@ npm install
 - `node_modules` 폴더가 생기고 끝나면 다음 단계로 갑니다.
 
 ### 4단계: 개발 서버 실행
+
+**루트에 있는 경우:** `npm run dev` (내부에서 `frontend`의 Vite를 실행합니다.)
+
+**`frontend` 폴더에 있는 경우:**
 
 ```bash
 npm run dev
@@ -236,20 +263,23 @@ npm run dev
 한 번에 복사해서 쓰기 어렵다면, 아래 순서만 기억하면 됩니다.
 
 1. **Backend**  
-   터미널 1:
+   터미널 1 (프로젝트 루트에서):
    ```bash
-   cd crew-line-team/backend
-   mvn spring-boot:run
+   cd crew-line-team
+   ./run-backend.sh
    ```
+   (Windows: `run-backend.bat`)  
+   또는 `cd backend` 후 `mvn spring-boot:run` / 루트에서 `mvn spring-boot:run -pl backend`  
    → 로그에 `Started ...` 나올 때까지 대기
 
 2. **Frontend**  
    터미널 2 (새 창):
    ```bash
-   cd crew-line-team/frontend
-   npm install   # 최초 1회만
+   cd crew-line-team
+   npm install --prefix frontend   # 최초 1회만
    npm run dev
    ```
+   (`crew-line-team` 은 본인 프로젝트 폴더 이름으로 바꿉니다.)
 
 3. **브라우저**  
    [http://localhost:5173](http://localhost:5173) 접속
@@ -343,6 +373,17 @@ chmod +x build-package.sh
 - Maven이 설치되지 않았거나, 터미널에서 찾지 못하는 상태입니다.
 - [사전 요구사항 - Maven 설치](#maven-설치)를 다시 진행하고, **PATH**에 `bin` 경로가 들어갔는지 확인하세요.
 - 터미널을 **다시 연 뒤** `mvn -v` 로 확인합니다.
+
+### 프로젝트 루트에서 `mvn spring-boot:run` → `No plugin found for prefix 'spring-boot'`
+
+- **원인:** Spring Boot `pom.xml`은 **`backend` 폴더 안**에만 있습니다. 루트에서 `mvn spring-boot:run`만 쓰면 해당 플러그인을 찾지 못합니다.
+- **해결:** 루트에서 **`./run-backend.sh`**(Mac/Linux) 또는 **`run-backend.bat`**(Windows)를 쓰거나, **`mvn spring-boot:run -pl backend`** 를 실행하세요. (고급: **`./mvn-backend.sh spring-boot:run`** — `backend/pom.xml`만 대상으로 합니다.)
+
+### Maven이 `PKIX path building failed` / `certificate_unknown` (repo.maven.apache.org)
+
+- 회사 SSL 검사(프록시·자체 CA) 때문에 Central 접속이 막힌 경우가 많습니다.
+- **근본:** IT 안내에 따라 JDK `cacerts`에 회사 루트 CA를 넣습니다.
+- **임시(사내망에서만 신중히):** `build/maven-corp-pkix.env.example` 를 복사해 `build/maven-corp-pkix.env` 로 저장한 뒤, 안내대로 `LINE_TEAM_MAVEN_OPTS` 줄의 주석을 해제합니다. **`./run-backend.sh`** / **`./mvn-backend.sh`** 는 이 파일이 있으면 자동으로 반영합니다 (Windows `run-backend.bat`는 기존처럼 `JAVA_HOME` 설정 위주 — 필요 시 터미널에서 `set LINE_TEAM_MAVEN_OPTS=...` 후 `mvn-backend.bat` 사용).
 
 ### `java: command not found` 또는 Java 버전이 21 미만
 

@@ -1,0 +1,12 @@
+{
+  "name": "line-team-generator",
+  "private": true,
+  "description": "승무원 라인팀 편성 — 루트에서 프론트 개발 서버만 위임",
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "install:frontend": "npm install --prefix frontend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
