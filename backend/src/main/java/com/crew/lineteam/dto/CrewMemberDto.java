@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 /**
  * 승무원 1명 정보 (엑셀/API 공통)
  * - 승무원 리스트 Test.xlsx 기준: 사번, 이름, 성별, BASE, Rank(TP/TS), Line, 직급, 구분, 자격(방송자격)
@@ -28,6 +30,9 @@ public class CrewMemberDto {
     private String fromColumn;  // FROM 칼럼: LJ, RS, BX 중 하나 (필드명 from은 Lombok 빌더와 충돌 가능해 fromColumn 사용)
     private String annc;        // ANNC 칼럼 (표시용)
     private String qualification; // Qualification 칼럼 (심사관 등, 표시용)
+
+    /** 업로드 시트 헤더 문자열 → 해당 행 셀 값(엑셀 추출 시 입력과 동일 열·순서) */
+    private Map<String, String> importColumns;
 
     public String getFromColumn() { return fromColumn; }
     public void setFromColumn(String fromColumn) { this.fromColumn = fromColumn; }

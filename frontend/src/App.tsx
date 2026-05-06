@@ -7,6 +7,7 @@ import {
   assignTeams,
   moveMember,
   exportExcel,
+  type CrewUploadResponse,
   type ExportMemberSort,
   type PinMode,
 } from './api'
@@ -29,14 +30,19 @@ function App() {
   const [csvPasteText, setCsvPasteText] = useState('')
   const [selectedPinMode, setSelectedPinMode] = useState<PinMode | null>(null)
   const [exportMemberSort, setExportMemberSort] = useState<ExportMemberSort>('employeeId')
+  const [importColumnHeaders, setImportColumnHeaders] = useState<string[]>([])
 
-  const applyCrewAndAssign = useCallback(async (list: import('./types').CrewMember[]) => {
-    if (list.length === 0) return
-    setCrew(list)
-    const result = await assignTeams(list)
-    setTeams(result)
-    setStep('assigned')
-  }, [])
+  const applyCrewAndAssign = useCallback(
+    async (list: import('./types').CrewMember[], columnHeaders?: string[]) => {
+      if (list.length === 0) return
+      setCrew(list)
+      if (columnHeaders !== undefined) setImportColumnHeaders(columnHeaders)
+      const result = await assignTeams(list)
+      setTeams(result)
+      setStep('assigned')
+    },
+    []
+  )
 
   const onFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -44,12 +50,13 @@ function App() {
     setError(null)
     setLoading(true)
     try {
-      const list = await uploadExcel(file)
+      const { crew: list, columnHeaders } = await uploadExcel(file)
       if (list.length === 0) {
         setLoading(false)
         return
       }
       setUploadedExcelName(file.name)
+      setImportColumnHeaders(columnHeaders ?? [])
       setCrew(list)
       setTeams([])
       setStep('review')
@@ -83,6 +90,7 @@ function App() {
     setStep('upload')
     setTeams([])
     setCrew([])
+    setImportColumnHeaders([])
     setUploadedExcelName(null)
     setCsvPasteText('')
     setError(null)
@@ -97,12 +105,13 @@ function App() {
     setError(null)
     setLoading(true)
     try {
-      const list = await uploadCrewCsvText(text)
+      const { crew: list, columnHeaders } = await uploadCrewCsvText(text)
       if (list.length === 0) {
         setLoading(false)
         return
       }
       setUploadedExcelName('CSV 붙여넣기')
+      setImportColumnHeaders(columnHeaders ?? [])
       setCrew(list)
       setTeams([])
       setStep('review')
@@ -122,21 +131,20 @@ function App() {
     setError(null)
     setLoading(true)
     try {
-      let list: import('./types').CrewMember[]
+      let res: CrewUploadResponse
       if (hasGoogleClientId) {
         const { email, csv } = await fetchGoogleSheetCsvWithSelectedAccount(url)
         setGoogleAccountEmail(email)
-        list = await uploadCrewCsvText(csv)
+        res = await uploadCrewCsvText(csv)
       } else {
-        // 초기 사용자 편의: 별도 설정 없이 공유 링크 직접 가져오기
         setGoogleAccountEmail(null)
-        list = await uploadFromGoogleSpreadsheet(url)
+        res = await uploadFromGoogleSpreadsheet(url)
       }
-      if (list.length === 0) {
+      if (res.crew.length === 0) {
         setLoading(false)
         return
       }
-      await applyCrewAndAssign(list)
+      await applyCrewAndAssign(res.crew, res.columnHeaders ?? [])
     } catch (err) {
       const message = err instanceof Error ? err.message : '가져오기 또는 편성 중 오류가 발생했습니다.'
       if (
@@ -218,7 +226,10 @@ function App() {
     if (teams.length === 0) return
     setError(null)
     try {
-      const blob = await exportExcel(teams, { sort: exportMemberSort })
+      const blob = await exportExcel(teams, {
+        sort: exportMemberSort,
+        columnHeaders: importColumnHeaders.length > 0 ? importColumnHeaders : undefined,
+      })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -228,7 +239,7 @@ function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '엑셀 추출 중 오류가 발생했습니다.')
     }
-  }, [teams, exportMemberSort])
+  }, [teams, exportMemberSort, importColumnHeaders])
 
   return (
     <div className="app">
@@ -254,10 +265,6 @@ function App() {
         {step === 'upload' && (
           <section className="section card">
             <h2>재직 현황 불러오기</h2>
-            <p className="section-desc">
-              엑셀 업로드가 보안 프로그램으로 막히면 <strong>CSV 붙여넣기</strong> 또는{' '}
-              <strong>Google 스프레드시트</strong>를 이용해 보세요.
-            </p>
 
             <div className="import-options">
               <div className="import-option">

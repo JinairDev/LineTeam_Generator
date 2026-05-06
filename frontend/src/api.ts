@@ -3,6 +3,11 @@ import { devGoogleCsvProxyUrl, parseGoogleSheetUrl } from './googleSheetExport'
 
 const API = '/api'
 
+export interface CrewUploadResponse {
+  crew: CrewMember[]
+  columnHeaders: string[]
+}
+
 async function parseErrorResponse(res: Response, defaultMsg: string): Promise<string> {
   const text = await res.text()
   if (!text) return defaultMsg
@@ -28,7 +33,7 @@ async function handleResponse<T>(res: Response, defaultError: string, parse: () 
   }
 }
 
-export async function uploadExcel(file: File): Promise<CrewMember[]> {
+export async function uploadExcel(file: File): Promise<CrewUploadResponse> {
   const form = new FormData()
   form.append('file', file)
   let res: Response
@@ -40,7 +45,7 @@ export async function uploadExcel(file: File): Promise<CrewMember[]> {
   return handleResponse(res, '엑셀 업로드 실패', () => res.json())
 }
 
-export async function uploadCrewCsvText(csv: string): Promise<CrewMember[]> {
+export async function uploadCrewCsvText(csv: string): Promise<CrewUploadResponse> {
   let res: Response
   try {
     // multipart: JSON에 CSV를 넣으면 이스케이프로 본문이 커지고 특수문자로 500이 날 수 있어 엑셀 업로드와 동일 방식 사용
@@ -53,7 +58,7 @@ export async function uploadCrewCsvText(csv: string): Promise<CrewMember[]> {
   return handleResponse(res, 'CSV 처리 실패', () => res.json())
 }
 
-export async function uploadFromGoogleSpreadsheet(spreadsheetUrl: string): Promise<CrewMember[]> {
+export async function uploadFromGoogleSpreadsheet(spreadsheetUrl: string): Promise<CrewUploadResponse> {
   if (import.meta.env.DEV) {
     const parsed = parseGoogleSheetUrl(spreadsheetUrl)
     if (parsed) {
@@ -145,7 +150,7 @@ export type ExportMemberSort = 'employeeId' | 'grade'
 
 export async function exportExcel(
   teams: LineTeam[],
-  options?: { sort?: ExportMemberSort }
+  options?: { sort?: ExportMemberSort; columnHeaders?: string[] }
 ): Promise<Blob> {
   const sort = options?.sort === 'grade' ? 'grade' : 'employeeId'
   const q = `?sort=${encodeURIComponent(sort)}`
@@ -154,7 +159,10 @@ export async function exportExcel(
     res = await fetch(`${API}/export${q}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(teams),
+      body: JSON.stringify({
+        teams,
+        columnHeaders: options?.columnHeaders?.length ? options.columnHeaders : undefined,
+      }),
     })
   } catch (e) {
     throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.')

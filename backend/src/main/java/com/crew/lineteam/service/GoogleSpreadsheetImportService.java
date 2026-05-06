@@ -1,6 +1,6 @@
 package com.crew.lineteam.service;
 
-import com.crew.lineteam.dto.CrewMemberDto;
+import com.crew.lineteam.dto.CrewUploadResponse;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,7 +56,7 @@ public class GoogleSpreadsheetImportService {
      * 공개 CSV 내보내기 URL로 스프레드시트를 가져와 엑셀과 동일 규칙으로 파싱합니다.
      * 스프레드시트는 "링크가 있는 모든 사용자"에게 보기 권한이 있어야 합니다.
      */
-    public List<CrewMemberDto> importFromUrlOrId(String urlOrId) throws Exception {
+    public CrewUploadResponse importFromUrlOrId(String urlOrId) throws Exception {
         String trimmed = urlOrId.trim();
         String id = extractSpreadsheetId(trimmed);
         String gid = extractGid(trimmed);
@@ -91,17 +91,20 @@ public class GoogleSpreadsheetImportService {
 
         try (InputStream in = response.body();
              InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
-            List<CrewMemberDto> crew = excelService.parseCrewCsv(reader);
-            if (crew == null || crew.isEmpty()) {
+            CrewUploadResponse result = excelService.parseCrewCsv(reader);
+            if (result.getCrew() == null || result.getCrew().isEmpty()) {
                 throw new IllegalArgumentException(
                         "사번·이름이 있는 데이터 행이 없습니다. 첫 행에 헤더(사번, 이름, BASE 등)가 있는지 확인해 주세요.");
             }
-            return crew;
+            return result;
         }
     }
 
     private HttpClient buildHttpClient() throws Exception {
-        HttpClient.Builder b = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15));
+        // NORMAL은 301/302/303만 따라가며, Google export가 307을 줄 수 있어 ALWAYS 사용
+        HttpClient.Builder b = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(15))
+                .followRedirects(HttpClient.Redirect.ALWAYS);
         if (trustAllCertificates) {
             b.sslContext(insecureSslContext());
         }

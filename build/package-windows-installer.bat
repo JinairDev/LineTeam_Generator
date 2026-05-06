@@ -28,7 +28,7 @@ jpackage ^
   --input "%INPUT%" ^
   --main-jar "%JAR%" ^
   --main-class org.springframework.boot.loader.launch.JarLauncher ^
-  --java-options "-Dfile.encoding=UTF-8" ^
+  --java-options "-Dfile.encoding=UTF-8 -Xms128m -Xmx512m" ^
   --dest "%DEST%" ^
   --app-version 1.0.0 ^
   --win-console

@@ -13,6 +13,8 @@ export interface CrewMember {
   fromColumn?: string    // FROM 컬럼 → LJ, BX, RS
   annc?: string          // ANNC 컬럼
   qualification?: string // Qualification(심사관 등) - 엑셀과 동일 이름
+  /** 업로드 시트 헤더 → 셀 값 (엑셀 추출 시 입력과 동일 순서) */
+  importColumns?: Record<string, string>
 }
 
 export interface LineTeam {

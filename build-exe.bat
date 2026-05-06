@@ -54,6 +54,7 @@ if not exist dist mkdir dist
 if exist "dist\승무원라인팀편성" rmdir /s /q "dist\승무원라인팀편성"
 
 rem app-image = folder with exe launcher. exe/msi need WiX Toolset.
+rem -Xmx: PC 메모리/페이지파일이 빡빡할 때 기본 힥(~수 GB) 예약으로 mmap 실패 방지
 "%JPACKAGE%" ^
   --type app-image ^
   --name "승무원라인팀편성" ^
@@ -62,7 +63,7 @@ rem app-image = folder with exe launcher. exe/msi need WiX Toolset.
   --main-jar line-team-assignment-0.0.1-SNAPSHOT.jar ^
   --dest dist ^
   --win-console ^
-  --java-options "-Dserver.port=8080"
+  --java-options "-Dserver.port=8080 -Xms128m -Xmx512m"
 
 if errorlevel 1 goto jpackagefail
 goto jpackagedone

@@ -2,6 +2,8 @@ package com.crew.lineteam.controller;
 
 import com.crew.lineteam.dto.AssignRequest;
 import com.crew.lineteam.dto.CrewMemberDto;
+import com.crew.lineteam.dto.CrewUploadResponse;
+import com.crew.lineteam.dto.ExportTeamsRequest;
 import com.crew.lineteam.dto.GoogleSpreadsheetImportRequest;
 import com.crew.lineteam.dto.LineTeamDto;
 import com.crew.lineteam.service.ExcelService;
@@ -32,7 +34,7 @@ public class CrewLineTeamController {
      * 1. 재직 현황 엑셀 업로드 → 파싱된 승무원 목록 반환
      */
     @PostMapping("/upload")
-    public ResponseEntity<List<CrewMemberDto>> uploadExcel(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<CrewUploadResponse> uploadExcel(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("파일을 선택해 주세요.");
         }
@@ -41,11 +43,11 @@ public class CrewLineTeamController {
             throw new IllegalArgumentException("엑셀 파일(.xlsx, .xls)만 업로드할 수 있습니다.");
         }
         try {
-            List<CrewMemberDto> crew = excelService.parseCrewExcel(file.getInputStream());
-            if (crew == null || crew.isEmpty()) {
+            CrewUploadResponse result = excelService.parseCrewExcel(file.getInputStream());
+            if (result.getCrew() == null || result.getCrew().isEmpty()) {
                 throw new IllegalArgumentException("사번·이름이 있는 데이터 행이 없습니다. 엑셀 첫 행에 헤더(사번, 이름, BASE 등)가 있는지 확인해 주세요.");
             }
-            return ResponseEntity.ok(crew);
+            return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -57,13 +59,13 @@ public class CrewLineTeamController {
      * 1. 재직 현황: Google 스프레드시트(공개 링크)에서 CSV로 가져와 파싱
      */
     @PostMapping("/upload-from-google")
-    public ResponseEntity<List<CrewMemberDto>> uploadFromGoogle(@RequestBody GoogleSpreadsheetImportRequest body) {
+    public ResponseEntity<CrewUploadResponse> uploadFromGoogle(@RequestBody GoogleSpreadsheetImportRequest body) {
         if (body == null || body.getSpreadsheetUrl() == null || body.getSpreadsheetUrl().isBlank()) {
             throw new IllegalArgumentException("Google 스프레드시트 URL 또는 ID를 입력해 주세요.");
         }
         try {
-            List<CrewMemberDto> crew = googleSpreadsheetImportService.importFromUrlOrId(body.getSpreadsheetUrl());
-            return ResponseEntity.ok(crew);
+            CrewUploadResponse result = googleSpreadsheetImportService.importFromUrlOrId(body.getSpreadsheetUrl());
+            return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -81,7 +83,7 @@ public class CrewLineTeamController {
      * - {@code text/plain}: 호환용
      */
     @PostMapping(value = "/upload-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<List<CrewMemberDto>> uploadCsvMultipart(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<CrewUploadResponse> uploadCsvMultipart(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("CSV 파일이 비어 있습니다.");
         }
@@ -94,27 +96,27 @@ public class CrewLineTeamController {
     }
 
     @PostMapping(value = "/upload-csv", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<CrewMemberDto>> uploadCsvJson(@RequestBody CsvTextRequest body) {
+    public ResponseEntity<CrewUploadResponse> uploadCsvJson(@RequestBody CsvTextRequest body) {
         String csvBody = body != null ? body.getCsv() : null;
         return uploadCsvResponse(csvBody);
     }
 
     @PostMapping(value = "/upload-csv", consumes = MediaType.TEXT_PLAIN_VALUE)
-    public ResponseEntity<List<CrewMemberDto>> uploadCsvPlain(@RequestBody String csvBody) {
+    public ResponseEntity<CrewUploadResponse> uploadCsvPlain(@RequestBody String csvBody) {
         return uploadCsvResponse(csvBody);
     }
 
-    private ResponseEntity<List<CrewMemberDto>> uploadCsvResponse(String csvBody) {
+    private ResponseEntity<CrewUploadResponse> uploadCsvResponse(String csvBody) {
         if (csvBody == null || csvBody.isBlank()) {
             throw new IllegalArgumentException("CSV 내용이 비어 있습니다.");
         }
         try {
-            List<CrewMemberDto> crew = excelService.parseCrewCsv(new StringReader(csvBody));
-            if (crew == null || crew.isEmpty()) {
+            CrewUploadResponse result = excelService.parseCrewCsv(new StringReader(csvBody));
+            if (result.getCrew() == null || result.getCrew().isEmpty()) {
                 throw new IllegalArgumentException(
                         "사번·이름이 있는 데이터 행이 없습니다. 첫 행에 헤더(사번, 이름, BASE 등)가 있는지 확인해 주세요.");
             }
-            return ResponseEntity.ok(crew);
+            return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -227,13 +229,16 @@ public class CrewLineTeamController {
      */
     @PostMapping("/export")
     public ResponseEntity<byte[]> exportExcel(
-            @RequestBody List<LineTeamDto> teams,
+            @RequestBody ExportTeamsRequest body,
             @RequestParam(value = "sort", required = false) String sort) {
-        if (teams == null || teams.isEmpty()) {
+        if (body == null || body.getTeams() == null || body.getTeams().isEmpty()) {
             throw new IllegalArgumentException("내보낼 팀 목록이 없습니다.");
         }
         try {
-            byte[] bytes = excelService.exportTeamsToExcel(teams, ExcelService.ExportMemberSort.fromQueryParam(sort));
+            byte[] bytes = excelService.exportTeamsToExcel(
+                    body.getTeams(),
+                    ExcelService.ExportMemberSort.fromQueryParam(sort),
+                    body.getColumnHeaders());
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
             headers.setContentDispositionFormData("attachment", "라인팀 생성 결과.xlsx");
