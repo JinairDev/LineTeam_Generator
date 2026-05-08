@@ -19,6 +19,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -33,6 +35,7 @@ public class ExcelService {
 
     private static final int HEADER_ROW = 0;
     private static final int DATA_START_ROW = 1;
+    private static final Pattern TEAM_NUMBER_PATTERN = Pattern.compile("(\\d+)");
 
     /**
      * 엑셀 컬럼 헤더 후보: FROM, RANK, ANNC, Qualification, 재직상태 등
@@ -51,7 +54,7 @@ public class ExcelService {
             entry("rank", new String[]{"Qualification", "자격", "방송자격", "자격코드"}),
             entry("from", new String[]{"FROM", "from", "From"}),
             entry("annc", new String[]{"ANNC", "Annc", "annc"}),
-            entry("qualification", new String[]{"Qualification", "QUALIFICATION", "자격(심사관등)"})
+            entry("qualification", new String[]{"Qualification", "QUALIFICATION", "자격(심사관등)"} )
     );
 
     /**
@@ -339,6 +342,7 @@ public class ExcelService {
                 .status(nullToEmpty(get.apply("status")))
                 .department(nullToEmpty(get.apply("department")))
                 .rank(nullToEmpty(get.apply("rank")))
+                .department(nullToEmpty(get.apply("department")))
                 .annc(nullToEmpty(get.apply("annc")))
                 .qualification(nullToEmpty(get.apply("qualification")))
                 .build();
@@ -397,7 +401,7 @@ public class ExcelService {
     }
 
     private static final List<String> DEFAULT_EXPORT_HEADERS = List.of(
-            "사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "FROM", "ANNC", "Qualification");
+            "사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "구(TM)", "소속팀", "FROM", "ANNC", "Qualification");
 
     /**
      * 편성 결과를 엑셀 파일로 생성 (바이트 배열 반환). 팀 내 행은 사번 오름차순.
@@ -451,7 +455,7 @@ public class ExcelService {
                 for (CrewMemberDto m : membersOut) {
                     Row row = sheet.createRow(rowNum++);
                     for (int i = 0; i < headersOut.size(); i++) {
-                        row.createCell(i).setCellValue(exportValueForHeader(m, headersOut.get(i)));
+                        row.createCell(i).setCellValue(exportValueForHeader(team, m, headersOut.get(i)));
                     }
                 }
                 rowNum++;
@@ -466,7 +470,7 @@ public class ExcelService {
         }
     }
 
-    private static String exportValueForHeader(CrewMemberDto m, String header) {
+    private static String exportValueForHeader(LineTeamDto team, CrewMemberDto m, String header) {
         if (header == null) {
             return "";
         }
@@ -476,10 +480,10 @@ public class ExcelService {
                 return v;
             }
         }
-        return fallbackExportValue(m, header.trim());
+        return fallbackExportValue(team, m, header.trim());
     }
 
-    private static String fallbackExportValue(CrewMemberDto m, String header) {
+    private static String fallbackExportValue(LineTeamDto team, CrewMemberDto m, String header) {
         if (header.isEmpty()) {
             return "";
         }
@@ -523,8 +527,13 @@ public class ExcelService {
         if ("구분".equals(header) || "재직상태".equals(header)) {
             return nz(m.getStatus());
         }
-        if ("소속팀".equals(header)) {
+        if ("구(TM)".equals(header)) {
+            // 원본 소속팀(구(TM)) 값 보존: 입력의 '소속팀/부서' 컬럼을 department로 파싱해둠
             return nz(m.getDepartment());
+        }
+        if ("소속팀".equals(header)) {
+            // 신규 배정 소속팀: 팀ID 숫자부 + (TS면 DP, 그 외는 RANK 그대로)
+            return nz(buildAssignedDepartment(team != null ? team.getTeamId() : null, m));
         }
         return "";
     }
@@ -592,5 +601,32 @@ public class ExcelService {
         } catch (NumberFormatException e) {
             return a.compareTo(b);
         }
+    }
+
+    /**
+     * 소속팀 표기 규칙:
+     * - 팀ID 숫자부 + 접미사(RANK 기반)
+     * - RANK(TP/TS 등) 칼럼만 사용
+     * - RANK가 TS이면 DP로 치환
+     * - 그 외는 RANK 값을 그대로 사용 (예: TP -> TP)
+     *   예) A101 + TS -> 101DP, A101 + TP -> 101TP
+     */
+    private static String buildAssignedDepartment(String teamId, CrewMemberDto m) {
+        String normalizedTeam = teamId == null ? "" : teamId.trim().toUpperCase(Locale.ROOT);
+        String teamNumber = normalizedTeam;
+        Matcher matcher = TEAM_NUMBER_PATTERN.matcher(normalizedTeam);
+        if (matcher.find()) {
+            teamNumber = matcher.group(1);
+        }
+        String position = m != null && m.getPositionCode() != null
+                ? m.getPositionCode().trim().toUpperCase(Locale.ROOT)
+                : "";
+        if (position.isEmpty()) {
+            return teamNumber;
+        }
+        if ("TS".equals(position)) {
+            return teamNumber + "DP";
+        }
+        return teamNumber + position;
     }
 }
