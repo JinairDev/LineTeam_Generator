@@ -6,6 +6,7 @@ import com.crew.lineteam.dto.PinMode;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
@@ -13,7 +14,8 @@ import java.util.stream.Collectors;
  * - SEL / PUS 베이스는 라인 코드가 정해진 **고정 팀 수**만큼만 생성 (SEL 61, PUS 8), 전원을 그 팀들에만 배분
  * - 그 외 베이스는 TP 수 기준(최소 1팀)으로 팀 슬롯 생성
  * - TP/TS 자격 규칙: TP=LJ → TS는 LJ/BX/RS 가능, TP=BX/RS → TS는 LJ만
- * - TS 인원은 자격 규칙을 지키면서 팀별 TS 수가 균등하도록 배분
+ * - TS 인원은 자격 규칙을 지키면서 팀별 TS 수가 균등하도록 배분(동률 팀은 무작위)
+ * - TP·기타 인원은 팀별 인원이 최대한 맞도록 두되, 가장 적은 팀이 여럿이면 그중 무작위 배치(A101 순서 고정 없음)
  * - SEL·PUS 고정 팀은 인원 상한 없이 전원 배분(그 외 베이스는 팀당 최대 15명 목표)
  */
 @Service
@@ -43,7 +45,7 @@ public class TeamAssignmentService {
         }
 
         Set<String> assignedIds = new HashSet<>();
-        placeTpsRoundRobin(teams, crew, assignedIds);
+        placeTpsBalancedRandom(teams, crew, assignedIds);
 
         assignTsAndOthers(teams, crew, assignedIds);
         return teams;
@@ -81,13 +83,12 @@ public class TeamAssignmentService {
         return (int) Math.max(1, tpCount);
     }
 
-    /** 같은 베이스 고정 팀들에 TP를 라운드로빈으로 배치 */
-    private static void placeTpsRoundRobin(List<LineTeamDto> teams, List<CrewMemberDto> allCrew, Set<String> assignedIds) {
+    /** 같은 베이스 팀에 TP를 배치: 인원이 가장 적은 팀이 여러 개면 그중 무작위(균등 + 잔여 랜덤) */
+    private static void placeTpsBalancedRandom(List<LineTeamDto> teams, List<CrewMemberDto> allCrew, Set<String> assignedIds) {
         Map<String, List<LineTeamDto>> byBase = teams.stream().collect(Collectors.groupingBy(LineTeamDto::getBase));
         for (List<LineTeamDto> list : byBase.values()) {
             list.sort(Comparator.comparingInt(LineTeamDto::getIndexInBase));
         }
-        Map<String, Integer> nextIdx = new HashMap<>();
         List<CrewMemberDto> tps = allCrew.stream().filter(CrewMemberDto::isTP).collect(Collectors.toCollection(ArrayList::new));
         Collections.shuffle(tps);
         for (CrewMemberDto tp : tps) {
@@ -96,9 +97,11 @@ public class TeamAssignmentService {
             if (baseTeams == null || baseTeams.isEmpty()) {
                 continue;
             }
-            int i = nextIdx.getOrDefault(base, 0) % baseTeams.size();
-            nextIdx.put(base, nextIdx.getOrDefault(base, 0) + 1);
-            baseTeams.get(i).getMembers().add(tp);
+            LineTeamDto target = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
+            if (target == null) {
+                continue;
+            }
+            target.getMembers().add(tp);
             assignedIds.add(tp.getEmployeeId());
         }
     }
@@ -279,19 +282,17 @@ public class TeamAssignmentService {
         teams.forEach(t -> t.getMembers().forEach(m -> assignedIds.add(m.getEmployeeId())));
 
         Map<String, List<LineTeamDto>> teamsByBase = teams.stream().collect(Collectors.groupingBy(LineTeamDto::getBase));
-        Map<String, Integer> nextTeamIndexByBase = new HashMap<>();
 
         for (CrewMemberDto c : flatPool) {
             if (assignedIds.contains(c.getEmployeeId())) continue;
             String base = normalizeBase(c.getBase());
             List<LineTeamDto> baseTeams = teamsByBase.get(base);
             if (baseTeams == null) baseTeams = teams;
-            int startIdx = nextTeamIndexByBase.getOrDefault(base, 0);
 
-            LineTeamDto team = findTeamWithCapacity(baseTeams, startIdx);
+            LineTeamDto team = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
 
             if (team == null) {
-                team = findTeamWithCapacity(teams, 0);
+                team = pickRandomTeamAmongMinLoadWithCapacity(teams);
             }
 
             if (team == null) {
@@ -307,8 +308,6 @@ public class TeamAssignmentService {
             if (team != null) {
                 team.getMembers().add(c);
                 assignedIds.add(c.getEmployeeId());
-                int foundIdx = baseTeams.indexOf(team);
-                nextTeamIndexByBase.put(base, foundIdx >= 0 ? (foundIdx + 1) % baseTeams.size() : (startIdx + 1) % baseTeams.size());
             }
         }
 
@@ -334,10 +333,10 @@ public class TeamAssignmentService {
                 List<LineTeamDto> baseTeams = teamsByBase.get(base);
                 if (baseTeams == null) baseTeams = teams;
 
-                LineTeamDto team = findTeamWithCapacity(baseTeams, 0);
+                LineTeamDto team = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
 
                 if (team == null) {
-                    team = findTeamWithCapacity(teams, 0);
+                    team = pickRandomTeamAmongMinLoadWithCapacity(teams);
                 }
 
                 if (team == null) {
@@ -373,12 +372,23 @@ public class TeamAssignmentService {
         }
     }
 
-    private LineTeamDto findTeamWithCapacity(List<LineTeamDto> teams, int startIdx) {
-        for (int i = 0; i < teams.size(); i++) {
-            LineTeamDto t = teams.get((startIdx + i) % teams.size());
-            if (t.getMemberCount() < maxTeamSize(t)) return t;
+    /**
+     * 정원 미만인 팀만 대상으로, 그중 멤버 수가 최소인 팀들 가운데 하나를 무작위로 고릅니다.
+     * 라운드로빈(A101→A102…)이 아니라 동률이면 랜덤이라 잔여 인원이 특정 팀 번호로 쏠리지 않습니다.
+     */
+    private static LineTeamDto pickRandomTeamAmongMinLoadWithCapacity(List<LineTeamDto> teams) {
+        if (teams == null || teams.isEmpty()) return null;
+        List<LineTeamDto> withCap = new ArrayList<>();
+        for (LineTeamDto t : teams) {
+            if (t.getMemberCount() < maxTeamSize(t)) withCap.add(t);
         }
-        return null;
+        if (withCap.isEmpty()) return null;
+        int minMembers = withCap.stream().mapToInt(LineTeamDto::getMemberCount).min().orElse(0);
+        List<LineTeamDto> atMin = new ArrayList<>();
+        for (LineTeamDto t : withCap) {
+            if (t.getMemberCount() == minMembers) atMin.add(t);
+        }
+        return atMin.get(ThreadLocalRandom.current().nextInt(atMin.size()));
     }
 
     private static LineTeamDto findSmallestTeam(List<LineTeamDto> teams) {
@@ -386,24 +396,31 @@ public class TeamAssignmentService {
         return teams.stream().min(Comparator.comparingInt(LineTeamDto::getMemberCount)).orElse(null);
     }
 
-    /** 자격 규칙을 만족하고 여유 인원이 있는 팀 중, TS 수가 가장 적은 팀 반환 (TS 균등 배분용) */
+    /** 자격 규칙·정원을 만족하는 팀 중 TS 수 최소(동률이면 총원 최소)인 팀들 중 하나를 무작위로 반환 */
     private LineTeamDto findTeamWithFewestTS(List<LineTeamDto> teams, CrewMemberDto ts) {
-        LineTeamDto best = null;
-        int bestTsCount = Integer.MAX_VALUE;
-        int bestTotal = Integer.MAX_VALUE;
+        List<LineTeamDto> valid = new ArrayList<>();
         for (LineTeamDto t : teams) {
             if (t.getMemberCount() >= maxTeamSize(t)) continue;
             CrewMemberDto tp = t.getMembers().stream().filter(CrewMemberDto::isTP).findFirst().orElse(null);
             if (!ts.canBeTSInTeamWithTP(tp)) continue;
-            long tsCount = t.getMembers().stream().filter(CrewMemberDto::isTS).count();
-            int total = t.getMemberCount();
-            if (tsCount < bestTsCount || (tsCount == bestTsCount && total < bestTotal)) {
-                best = t;
-                bestTsCount = (int) tsCount;
-                bestTotal = total;
-            }
+            valid.add(t);
         }
-        return best;
+        if (valid.isEmpty()) return null;
+        int bestTs = valid.stream()
+                .mapToInt(t -> (int) t.getMembers().stream().filter(CrewMemberDto::isTS).count())
+                .min()
+                .orElse(0);
+        List<LineTeamDto> fewestTs = new ArrayList<>();
+        for (LineTeamDto t : valid) {
+            int cnt = (int) t.getMembers().stream().filter(CrewMemberDto::isTS).count();
+            if (cnt == bestTs) fewestTs.add(t);
+        }
+        int bestTotal = fewestTs.stream().mapToInt(LineTeamDto::getMemberCount).min().orElse(Integer.MAX_VALUE);
+        List<LineTeamDto> ties = new ArrayList<>();
+        for (LineTeamDto t : fewestTs) {
+            if (t.getMemberCount() == bestTotal) ties.add(t);
+        }
+        return ties.get(ThreadLocalRandom.current().nextInt(ties.size()));
     }
 
     private List<CrewMemberDto> buildBalancedPool(List<CrewMemberDto> others,

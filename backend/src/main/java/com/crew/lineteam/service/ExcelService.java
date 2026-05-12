@@ -436,9 +436,12 @@ public class ExcelService {
 
             for (LineTeamDto team : teams) {
                 Row teamHeader = sheet.createRow(rowNum++);
-                teamHeader.createCell(0).setCellValue("팀ID: " + team.getTeamId());
+                teamHeader.createCell(0).setCellValue(team.getTeamId());
                 teamHeader.getCell(0).setCellStyle(headerStyle);
-                for (int c = 1; c < headersOut.size(); c++) {
+                int headCount = team.getMemberCount();
+                teamHeader.createCell(1).setCellValue(headCount + "명");
+                teamHeader.getCell(1).setCellStyle(headerStyle);
+                for (int c = 2; c < headersOut.size(); c++) {
                     teamHeader.createCell(c).setCellValue("");
                 }
 
