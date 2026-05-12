@@ -87,5 +87,6 @@ echo   To share: zip dist\승무원라인팀편성 folder, send zip.
 echo   User: unzip, run 승무원라인팀편성.exe, open http://localhost:8080
 echo   Java not required on user PC.
 echo.
+if "%NO_PAUSE%"=="1" exit /b 0
 pause
 exit /b 0

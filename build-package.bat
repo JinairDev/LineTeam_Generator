@@ -81,6 +81,7 @@ echo [DONE] JAR: backend\target\line-team-assignment-0.0.1-SNAPSHOT.jar
 echo Run: java -jar backend\target\line-team-assignment-0.0.1-SNAPSHOT.jar
 echo Then open http://localhost:8080
 echo.
+if "%NO_PAUSE%"=="1" exit /b 0
 pause
 exit /b 0
 

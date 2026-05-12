@@ -401,7 +401,7 @@ public class ExcelService {
     }
 
     private static final List<String> DEFAULT_EXPORT_HEADERS = List.of(
-            "사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "구(TM)", "소속팀", "FROM", "ANNC", "Qualification");
+            "사번", "이름", "성별", "BASE", "Rank", "Line", "직급", "구분", "(구)TM", "소속팀", "FROM", "ANNC", "Qualification");
 
     /**
      * 편성 결과를 엑셀 파일로 생성 (바이트 배열 반환). 팀 내 행은 사번 오름차순.
@@ -474,13 +474,52 @@ public class ExcelService {
         if (header == null) {
             return "";
         }
+        String h = header.trim();
+        // 소속팀·(구)TM 은 importColumns(원본 행)보다 편성 결과/원본 소속(department)이 우선
+        if ("소속팀".equals(h)) {
+            return nz(buildAssignedDepartment(team != null ? team.getTeamId() : null, m));
+        }
+        if (isLegacyTmColumn(h)) {
+            return nz(originalInputDepartment(m));
+        }
         if (m.getImportColumns() != null) {
             String v = m.getImportColumns().get(header);
             if (v != null) {
                 return v;
             }
         }
-        return fallbackExportValue(team, m, header.trim());
+        return fallbackExportValue(team, m, h);
+    }
+
+    /** RAW의 '소속팀' 컬럼 값(파싱 department, 없으면 importColumns의 소속팀) */
+    private static String originalInputDepartment(CrewMemberDto m) {
+        String d = nz(m.getDepartment());
+        if (!d.isEmpty()) {
+            return d;
+        }
+        if (m.getImportColumns() != null) {
+            String fromImport = m.getImportColumns().get("소속팀");
+            if (fromImport != null && !fromImport.isBlank()) {
+                return fromImport.trim();
+            }
+        }
+        return "";
+    }
+
+    /** (구)TM / 구(TM) 등 레거시 TM 열 */
+    private static boolean isLegacyTmColumn(String header) {
+        if (header == null || header.isBlank()) {
+            return false;
+        }
+        String t = header.replace(" ", "").trim();
+        if ("구(TM)".equalsIgnoreCase(t)) {
+            return true;
+        }
+        if ("(구)TM".equalsIgnoreCase(t)) {
+            return true;
+        }
+        String u = t.toUpperCase(Locale.ROOT);
+        return u.contains("구") && u.contains("TM");
     }
 
     private static String fallbackExportValue(LineTeamDto team, CrewMemberDto m, String header) {
@@ -527,12 +566,10 @@ public class ExcelService {
         if ("구분".equals(header) || "재직상태".equals(header)) {
             return nz(m.getStatus());
         }
-        if ("구(TM)".equals(header)) {
-            // 원본 소속팀(구(TM)) 값 보존: 입력의 '소속팀/부서' 컬럼을 department로 파싱해둠
-            return nz(m.getDepartment());
+        if (isLegacyTmColumn(header)) {
+            return nz(originalInputDepartment(m));
         }
         if ("소속팀".equals(header)) {
-            // 신규 배정 소속팀: 팀ID 숫자부 + (TS면 DP, 그 외는 RANK 그대로)
             return nz(buildAssignedDepartment(team != null ? team.getTeamId() : null, m));
         }
         return "";
