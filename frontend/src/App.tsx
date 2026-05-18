@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { LineTeam } from './types'
+import type { FpYyBalanceReport, LineTeam } from './types'
 import {
   uploadExcel,
   uploadCrewCsvText,
@@ -31,6 +31,13 @@ function App() {
   const [selectedPinMode, setSelectedPinMode] = useState<PinMode | null>(null)
   const [exportMemberSort, setExportMemberSort] = useState<ExportMemberSort>('employeeId')
   const [importColumnHeaders, setImportColumnHeaders] = useState<string[]>([])
+  const [fpYyBalance, setFpYyBalance] = useState<FpYyBalanceReport | null>(null)
+
+  const applyAssignResult = useCallback((result: { teams: LineTeam[]; fpYyBalance?: FpYyBalanceReport }) => {
+    setTeams(result.teams)
+    setFpYyBalance(result.fpYyBalance ?? null)
+    setStep('assigned')
+  }, [])
 
   const applyCrewAndAssign = useCallback(
     async (list: import('./types').CrewMember[], columnHeaders?: string[]) => {
@@ -38,10 +45,9 @@ function App() {
       setCrew(list)
       if (columnHeaders !== undefined) setImportColumnHeaders(columnHeaders)
       const result = await assignTeams(list)
-      setTeams(result)
-      setStep('assigned')
+      applyAssignResult(result)
     },
-    []
+    [applyAssignResult]
   )
 
   const onFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,14 +83,13 @@ function App() {
     setLoading(true)
     try {
       const result = await assignTeams(crew)
-      setTeams(result)
-      setStep('assigned')
+      applyAssignResult(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : '편성 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [crew])
+  }, [crew, applyAssignResult])
 
   const onBackToUpload = useCallback(() => {
     setStep('upload')
@@ -94,6 +99,7 @@ function App() {
     setUploadedExcelName(null)
     setCsvPasteText('')
     setError(null)
+    setFpYyBalance(null)
   }, [])
 
   const onCsvPasteSubmit = useCallback(async () => {
@@ -169,13 +175,13 @@ function App() {
     setLoading(true)
     try {
       const result = await assignTeams(crew)
-      setTeams(result)
+      applyAssignResult(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : '편성 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [crew])
+  }, [crew, applyAssignResult])
 
   const selectPinMode = useCallback((mode: PinMode) => {
     setSelectedPinMode((prev) => (prev === mode ? null : mode))
@@ -190,13 +196,13 @@ function App() {
         pinMode: selectedPinMode,
         previousTeams: teams,
       })
-      setTeams(result)
+      applyAssignResult(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : '편성 중 오류가 발생했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [crew, teams, selectedPinMode])
+  }, [crew, teams, selectedPinMode, applyAssignResult])
 
   const onMoveMember = useCallback(
     async (
@@ -470,6 +476,30 @@ function App() {
               <span className="stat">생성된 팀 <strong>{teams.length}</strong>개</span>
               <span className="stat">총 승무원 <strong>{teams.reduce((s, t) => s + t.members.length, 0)}</strong>명</span>
             </div>
+            {fpYyBalance && (
+              <div
+                className={`fp-yy-balance card ${fpYyBalance.balanced ? 'fp-yy-balance--ok' : 'fp-yy-balance--warn'}`}
+                role="status"
+              >
+                <p className="fp-yy-balance-summary">{fpYyBalance.summary}</p>
+                {fpYyBalance.bases.length > 0 && (
+                  <ul className="fp-yy-balance-bases">
+                    {fpYyBalance.bases.map((b) => (
+                      <li key={b.base}>
+                        <strong>{b.base}</strong>
+                        {' — '}
+                        FP {b.totalFp}명 (팀당 {b.fpMinPerTeam}~{b.fpMaxPerTeam})
+                        {b.fpBalanced ? ' ✓' : ' ⚠'}
+                        {', '}
+                        YY {b.totalYy}명 (팀당 {b.yyMinPerTeam}~{b.yyMaxPerTeam})
+                        {b.yyMinimumCoverageMet ? ' ✓' : ' ⚠'}
+                        {b.teamsWithoutYy > 0 ? ` · 미배치 ${b.teamsWithoutYy}팀` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <TeamBoard teams={teams} onMoveMember={onMoveMember} />
           </section>
         )}

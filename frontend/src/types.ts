@@ -24,3 +24,36 @@ export interface LineTeam {
   indexInBase: number
   members: CrewMember[]
 }
+
+export interface FpYyTeamCount {
+  teamId: string
+  fpCount: number
+  yyCount: number
+}
+
+export interface FpYyBaseBalance {
+  base: string
+  teamCount: number
+  totalFp: number
+  totalYy: number
+  fpBalanced: boolean
+  yyBalanced: boolean
+  fpMinPerTeam: number
+  fpMaxPerTeam: number
+  yyMinPerTeam: number
+  yyMaxPerTeam: number
+  teamsWithoutYy: number
+  yyMinimumCoverageMet: boolean
+  teams: FpYyTeamCount[]
+}
+
+export interface FpYyBalanceReport {
+  balanced: boolean
+  summary: string
+  bases: FpYyBaseBalance[]
+}
+
+export interface AssignResponse {
+  teams: LineTeam[]
+  fpYyBalance?: FpYyBalanceReport
+}

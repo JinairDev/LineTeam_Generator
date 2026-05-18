@@ -1,4 +1,4 @@
-import type { CrewMember, LineTeam } from './types'
+import type { AssignResponse, CrewMember, LineTeam } from './types'
 import { devGoogleCsvProxyUrl, parseGoogleSheetUrl } from './googleSheetExport'
 
 const API = '/api'
@@ -99,7 +99,7 @@ export async function assignTeams(
   crew: CrewMember[],
   teamCountByBase?: TeamCountByBase,
   options?: { pinMode?: PinMode; previousTeams?: LineTeam[] }
-): Promise<LineTeam[]> {
+): Promise<AssignResponse> {
   let res: Response
   try {
     res = await fetch(`${API}/assign`, {

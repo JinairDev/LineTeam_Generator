@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import com.crew.lineteam.util.RankTokenUtil;
+
 import java.util.Map;
 
 /**
@@ -20,7 +22,7 @@ public class CrewMemberDto {
     private String employeeId;   // 사번
     private String name;         // 이름
     private String grade;        // 직급 (객실3급 등 - 표시용)
-    private String positionCode; // Rank 컬럼: TP, TS 등 (팀장/선임 구분)
+    private String positionCode; // RANK 컬럼: TP, TS, FP, YY 등
     private String gender;       // 성별 (M/F 또는 남/여)
     private String rank;         // 자격 컬럼: 방송 자격 S/A/B/YY
     private String base;         // 근거지 BASE: SEL(서울), PUS(부산) 등
@@ -37,16 +39,34 @@ public class CrewMemberDto {
     public String getFromColumn() { return fromColumn; }
     public void setFromColumn(String fromColumn) { this.fromColumn = fromColumn; }
 
-    /** 팀장(TP) 여부 - positionCode 또는 grade에 TP 포함 */
-    public boolean isTP() {
-        if (positionCode != null && positionCode.contains("TP")) return true;
-        return grade != null && grade.contains("TP");
+    /** RANK 컬럼에서 추출한 토큰: TP, TS, FP, YY 중 하나 또는 null */
+    public String getRankToken() {
+        return RankTokenUtil.fromMember(this);
     }
 
-    /** 선임(TS) 여부 - positionCode 또는 grade에 TS 포함 */
+    /** 팀장(TP) 여부 */
+    public boolean isTP() {
+        return RankTokenUtil.TP.equals(getRankToken())
+                || containsTokenFallback(RankTokenUtil.TP);
+    }
+
+    /** 선임(TS) 여부 */
     public boolean isTS() {
-        if (positionCode != null && positionCode.contains("TS")) return true;
-        return grade != null && grade.contains("TS");
+        return RankTokenUtil.TS.equals(getRankToken())
+                || containsTokenFallback(RankTokenUtil.TS);
+    }
+
+    public boolean isFP() {
+        return RankTokenUtil.FP.equals(getRankToken());
+    }
+
+    public boolean isYY() {
+        return RankTokenUtil.YY.equals(getRankToken());
+    }
+
+    private boolean containsTokenFallback(String token) {
+        if (positionCode != null && positionCode.toUpperCase().contains(token)) return true;
+        return grade != null && grade.toUpperCase().contains(token);
     }
 
     /** 남성 여부 */

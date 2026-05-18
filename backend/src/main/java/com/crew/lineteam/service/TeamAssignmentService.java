@@ -1,8 +1,12 @@
 package com.crew.lineteam.service;
 
+import com.crew.lineteam.dto.AssignResponse;
 import com.crew.lineteam.dto.CrewMemberDto;
+import com.crew.lineteam.dto.FpYyBalanceReport;
 import com.crew.lineteam.dto.LineTeamDto;
 import com.crew.lineteam.dto.PinMode;
+import com.crew.lineteam.util.RankTokenUtil;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -17,13 +21,25 @@ import java.util.stream.Collectors;
  * - TS 인원은 자격 규칙을 지키면서 팀별 TS 수가 균등하도록 배분(동률 팀은 무작위)
  * - TP·기타 인원은 팀별 인원이 최대한 맞도록 두되, 가장 적은 팀이 여럿이면 그중 무작위 배치(A101 순서 고정 없음)
  * - SEL·PUS 고정 팀은 인원 상한 없이 전원 배분(그 외 베이스는 팀당 최대 15명 목표)
+ * - RANK FP·YY는 팀별 해당 인원 수 최소 팀에 우선 배치, 편성 후 균등 여부 검증
+ * - RANK YY는 같은 베이스 내 YY가 남는 한 모든 팀에 최소 1명 배치 (YY 부족 시 일부 팀은 0명)
  */
 @Service
+@RequiredArgsConstructor
 public class TeamAssignmentService {
+
+    private final FpYyBalanceService fpYyBalanceService;
 
     private static final int MAX_TEAM_SIZE = 15;
     /** SEL/PUS 고정 라인팀: 인원 전원 배분을 위해 사실상 상한 없음 */
     private static final int UNLIMITED_TEAM = 1_000_000;
+
+    public AssignResponse assignWithBalanceReport(List<CrewMemberDto> allCrew, Map<String, Integer> teamCountByBase) {
+        List<LineTeamDto> teams = assign(allCrew, teamCountByBase);
+        FpYyBalanceReport report = fpYyBalanceService.verify(teams);
+        logFpYyBalanceReport(report);
+        return AssignResponse.builder().teams(teams).fpYyBalance(report).build();
+    }
 
     public List<LineTeamDto> assign(List<CrewMemberDto> allCrew, Map<String, Integer> teamCountByBase) {
         List<CrewMemberDto> crew = assignableCrewOnly(allCrew);
@@ -116,6 +132,17 @@ public class TeamAssignmentService {
     /**
      * 직전 편성 결과를 기준으로 고정 범위만 두고 나머지를 다시 배치합니다.
      */
+    public AssignResponse assignWithBalanceReport(
+            List<CrewMemberDto> allCrew,
+            Map<String, Integer> teamCountByBase,
+            List<LineTeamDto> previousTeams,
+            PinMode pinMode) {
+        List<LineTeamDto> teams = assign(allCrew, teamCountByBase, previousTeams, pinMode);
+        FpYyBalanceReport report = fpYyBalanceService.verify(teams);
+        logFpYyBalanceReport(report);
+        return AssignResponse.builder().teams(teams).fpYyBalance(report).build();
+    }
+
     public List<LineTeamDto> assign(
             List<CrewMemberDto> allCrew,
             Map<String, Integer> teamCountByBase,
@@ -275,13 +302,25 @@ public class TeamAssignmentService {
         Collections.shuffle(otherPool);
 
         Map<String, List<CrewMemberDto>> byGrade = otherPool.stream().collect(Collectors.groupingBy(c -> nullToDefault(c.getGrade())));
-        Map<String, List<CrewMemberDto>> byRank = otherPool.stream().collect(Collectors.groupingBy(c -> nullToDefault(c.getRank())));
-        List<CrewMemberDto> flatPool = buildBalancedPool(otherPool, byGrade, byRank);
+        Map<String, List<CrewMemberDto>> byBroadcastRank = otherPool.stream().collect(Collectors.groupingBy(c -> nullToDefault(c.getRank())));
+        Map<String, List<CrewMemberDto>> byRankToken = otherPool.stream()
+                .filter(c -> {
+                    String t = c.getRankToken();
+                    return RankTokenUtil.FP.equals(t) || RankTokenUtil.YY.equals(t);
+                })
+                .collect(Collectors.groupingBy(c -> c.getRankToken()));
+        List<CrewMemberDto> flatPool = buildBalancedPool(otherPool, byGrade, byBroadcastRank, byRankToken);
 
         assignedIds.clear();
         teams.forEach(t -> t.getMembers().forEach(m -> assignedIds.add(m.getEmployeeId())));
 
-        Map<String, List<LineTeamDto>> teamsByBase = teams.stream().collect(Collectors.groupingBy(LineTeamDto::getBase));
+        Map<String, List<LineTeamDto>> teamsByBase = teams.stream()
+                .collect(Collectors.groupingBy(t -> normalizeBase(t.getBase()), LinkedHashMap::new, Collectors.toList()));
+
+        List<CrewMemberDto> yyMembers = otherPool.stream()
+                .filter(CrewMemberDto::isYY)
+                .collect(Collectors.toCollection(ArrayList::new));
+        ensureMinimumYyPerTeam(teamsByBase, yyMembers, assignedIds);
 
         for (CrewMemberDto c : flatPool) {
             if (assignedIds.contains(c.getEmployeeId())) continue;
@@ -289,20 +328,10 @@ public class TeamAssignmentService {
             List<LineTeamDto> baseTeams = teamsByBase.get(base);
             if (baseTeams == null) baseTeams = teams;
 
-            LineTeamDto team = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
+            LineTeamDto team = pickTeamForMember(baseTeams, c);
 
             if (team == null) {
-                team = pickRandomTeamAmongMinLoadWithCapacity(teams);
-            }
-
-            if (team == null) {
-                team = findSmallestTeam(baseTeams);
-            }
-
-            if (team == null && !teams.isEmpty()) {
-                team = teams.stream()
-                        .min(Comparator.comparingInt(LineTeamDto::getMemberCount))
-                        .orElse(null);
+                team = pickTeamForMember(teams, c);
             }
 
             if (team != null) {
@@ -333,20 +362,10 @@ public class TeamAssignmentService {
                 List<LineTeamDto> baseTeams = teamsByBase.get(base);
                 if (baseTeams == null) baseTeams = teams;
 
-                LineTeamDto team = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
+                LineTeamDto team = pickTeamForMember(baseTeams, c);
 
                 if (team == null) {
-                    team = pickRandomTeamAmongMinLoadWithCapacity(teams);
-                }
-
-                if (team == null) {
-                    team = findSmallestTeam(baseTeams);
-                }
-
-                if (team == null && !teams.isEmpty()) {
-                    team = teams.stream()
-                            .min(Comparator.comparingInt(LineTeamDto::getMemberCount))
-                            .orElse(null);
+                    team = pickTeamForMember(teams, c);
                 }
 
                 if (team != null) {
@@ -423,22 +442,145 @@ public class TeamAssignmentService {
         return ties.get(ThreadLocalRandom.current().nextInt(ties.size()));
     }
 
+    /**
+     * 같은 베이스에서 YY가 없는 팀에 우선 1명씩 배치합니다.
+     * YY 인원이 팀 수보다 적으면 가능한 팀까지만 채우고 나머지 팀은 YY 0명으로 둡니다.
+     */
+    private static void ensureMinimumYyPerTeam(
+            Map<String, List<LineTeamDto>> teamsByBase,
+            List<CrewMemberDto> yyMembers,
+            Set<String> assignedIds) {
+        Map<String, List<CrewMemberDto>> yyByBase = new LinkedHashMap<>();
+        for (CrewMemberDto c : yyMembers) {
+            if (c == null || assignedIds.contains(c.getEmployeeId())) {
+                continue;
+            }
+            String base = normalizeBase(c.getBase());
+            yyByBase.computeIfAbsent(base, k -> new ArrayList<>()).add(c);
+        }
+        for (List<CrewMemberDto> list : yyByBase.values()) {
+            Collections.shuffle(list);
+        }
+
+        for (Map.Entry<String, List<LineTeamDto>> entry : teamsByBase.entrySet()) {
+            List<LineTeamDto> baseTeams = entry.getValue();
+            List<CrewMemberDto> available = yyByBase.getOrDefault(entry.getKey(), List.of());
+            if (available.isEmpty() || baseTeams.isEmpty()) {
+                continue;
+            }
+
+            List<LineTeamDto> needsYy = new ArrayList<>();
+            for (LineTeamDto team : baseTeams) {
+                if (countRankTokenInTeam(team, RankTokenUtil.YY) == 0) {
+                    needsYy.add(team);
+                }
+            }
+            needsYy.sort(Comparator.comparingInt(LineTeamDto::getMemberCount));
+
+            for (LineTeamDto team : needsYy) {
+                if (available.isEmpty()) {
+                    break;
+                }
+                if (team.getMemberCount() >= maxTeamSize(team)) {
+                    continue;
+                }
+                CrewMemberDto yy = available.remove(0);
+                team.getMembers().add(yy);
+                assignedIds.add(yy.getEmployeeId());
+            }
+        }
+    }
+
+    private static LineTeamDto pickTeamForMember(List<LineTeamDto> teams, CrewMemberDto member) {
+        if (member == null) {
+            return pickRandomTeamAmongMinLoadWithCapacity(teams);
+        }
+        String token = member.getRankToken();
+        if (RankTokenUtil.FP.equals(token) || RankTokenUtil.YY.equals(token)) {
+            LineTeamDto balanced = pickTeamForBalancedRankToken(teams, token);
+            if (balanced != null) {
+                return balanced;
+            }
+        }
+        LineTeamDto team = pickRandomTeamAmongMinLoadWithCapacity(teams);
+        if (team != null) {
+            return team;
+        }
+        return findSmallestTeam(teams);
+    }
+
+    /**
+     * 정원 미만 팀 중 해당 RANK 토큰(FP/YY) 인원이 가장 적은 팀을 선택 (동률이면 총원 최소 → 무작위).
+     */
+    private static LineTeamDto pickTeamForBalancedRankToken(List<LineTeamDto> teams, String rankToken) {
+        if (teams == null || teams.isEmpty() || rankToken == null) {
+            return null;
+        }
+        List<LineTeamDto> withCap = new ArrayList<>();
+        for (LineTeamDto t : teams) {
+            if (t.getMemberCount() < maxTeamSize(t)) {
+                withCap.add(t);
+            }
+        }
+        if (withCap.isEmpty()) {
+            return null;
+        }
+        int minToken = withCap.stream()
+                .mapToInt(t -> countRankTokenInTeam(t, rankToken))
+                .min()
+                .orElse(0);
+        List<LineTeamDto> atMinToken = new ArrayList<>();
+        for (LineTeamDto t : withCap) {
+            if (countRankTokenInTeam(t, rankToken) == minToken) {
+                atMinToken.add(t);
+            }
+        }
+        int minMembers = atMinToken.stream().mapToInt(LineTeamDto::getMemberCount).min().orElse(0);
+        List<LineTeamDto> ties = new ArrayList<>();
+        for (LineTeamDto t : atMinToken) {
+            if (t.getMemberCount() == minMembers) {
+                ties.add(t);
+            }
+        }
+        return ties.get(ThreadLocalRandom.current().nextInt(ties.size()));
+    }
+
+    private static int countRankTokenInTeam(LineTeamDto team, String rankToken) {
+        if (team == null || team.getMembers() == null) {
+            return 0;
+        }
+        int count = 0;
+        for (CrewMemberDto m : team.getMembers()) {
+            if (RankTokenUtil.isToken(m, rankToken)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     private List<CrewMemberDto> buildBalancedPool(List<CrewMemberDto> others,
                                                   Map<String, List<CrewMemberDto>> byGrade,
-                                                  Map<String, List<CrewMemberDto>> byRank) {
+                                                  Map<String, List<CrewMemberDto>> byBroadcastRank,
+                                                  Map<String, List<CrewMemberDto>> byRankToken) {
         List<CrewMemberDto> result = new ArrayList<>();
         int maxRounds = 0;
         for (List<CrewMemberDto> list : byGrade.values()) maxRounds = Math.max(maxRounds, list.size());
-        for (List<CrewMemberDto> list : byRank.values()) maxRounds = Math.max(maxRounds, list.size());
+        for (List<CrewMemberDto> list : byBroadcastRank.values()) maxRounds = Math.max(maxRounds, list.size());
+        for (List<CrewMemberDto> list : byRankToken.values()) maxRounds = Math.max(maxRounds, list.size());
 
         Set<String> added = new HashSet<>();
         for (int r = 0; r < maxRounds; r++) {
+            for (List<CrewMemberDto> list : byRankToken.values()) {
+                if (r < list.size() && added.add(list.get(r).getEmployeeId())) {
+                    result.add(list.get(r));
+                }
+            }
             for (List<CrewMemberDto> list : byGrade.values()) {
                 if (r < list.size() && added.add(list.get(r).getEmployeeId())) {
                     result.add(list.get(r));
                 }
             }
-            for (List<CrewMemberDto> list : byRank.values()) {
+            for (List<CrewMemberDto> list : byBroadcastRank.values()) {
                 if (r < list.size() && added.add(list.get(r).getEmployeeId())) {
                     result.add(list.get(r));
                 }
@@ -448,6 +590,17 @@ public class TeamAssignmentService {
             if (added.add(c.getEmployeeId())) result.add(c);
         }
         return result;
+    }
+
+    private static void logFpYyBalanceReport(FpYyBalanceReport report) {
+        if (report == null) {
+            return;
+        }
+        if (report.isBalanced()) {
+            System.out.println("[TeamAssignmentService] " + report.getSummary());
+        } else {
+            System.err.println("[TeamAssignmentService] " + report.getSummary());
+        }
     }
 
     private static String nullToDefault(String s) {

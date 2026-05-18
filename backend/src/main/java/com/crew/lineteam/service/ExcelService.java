@@ -39,7 +39,7 @@ public class ExcelService {
 
     /**
      * 엑셀 컬럼 헤더 후보: FROM, RANK, ANNC, Qualification, 재직상태 등
-     * - RANK → positionCode (TP/TS), FROM → fromColumn (LJ/BX/RS), ANNC → annc, Qualification → rank(방송자격) + qualification(심사관 등)
+     * - RANK → positionCode (TP/TS/FP/YY), FROM → fromColumn (LJ/BX/RS), ANNC → annc, Qualification → rank(방송자격) + qualification(심사관 등)
      */
     private static final Map<String, String[]> COLUMN_ALIASES = Map.ofEntries(
             entry("employeeId", new String[]{"사번", "employeeId", "EMPLOYEE_ID"}),

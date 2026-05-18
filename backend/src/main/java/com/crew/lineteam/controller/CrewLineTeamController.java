@@ -1,6 +1,7 @@
 package com.crew.lineteam.controller;
 
 import com.crew.lineteam.dto.AssignRequest;
+import com.crew.lineteam.dto.AssignResponse;
 import com.crew.lineteam.dto.CrewMemberDto;
 import com.crew.lineteam.dto.CrewUploadResponse;
 import com.crew.lineteam.dto.ExportTeamsRequest;
@@ -131,7 +132,7 @@ public class CrewLineTeamController {
      * 2. 편성 실행: 승무원 목록과 선택적 지역별 팀 수를 받아 라인팀 목록 반환
      */
     @PostMapping("/assign")
-    public ResponseEntity<List<LineTeamDto>> assign(@RequestBody AssignRequest request) {
+    public ResponseEntity<AssignResponse> assign(@RequestBody AssignRequest request) {
         if (request == null || request.getCrew() == null) {
             throw new IllegalArgumentException("승무원 목록이 없습니다.");
         }
@@ -142,21 +143,21 @@ public class CrewLineTeamController {
                 && (request.getPreviousTeams() == null || request.getPreviousTeams().isEmpty())) {
             throw new IllegalArgumentException("재편성(고정)에는 이전 팀 정보(previousTeams)가 필요합니다.");
         }
-        List<LineTeamDto> teams;
+        AssignResponse response;
         if (request.getPinMode() != null && request.getPreviousTeams() != null && !request.getPreviousTeams().isEmpty()) {
-            teams = teamAssignmentService.assign(
+            response = teamAssignmentService.assignWithBalanceReport(
                     request.getCrew(),
                     request.getTeamCountByBase(),
                     request.getPreviousTeams(),
                     request.getPinMode()
             );
         } else {
-            teams = teamAssignmentService.assign(
+            response = teamAssignmentService.assignWithBalanceReport(
                     request.getCrew(),
                     request.getTeamCountByBase()
             );
         }
-        return ResponseEntity.ok(teams);
+        return ResponseEntity.ok(response);
     }
 
     /**

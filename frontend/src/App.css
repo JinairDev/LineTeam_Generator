@@ -402,6 +402,38 @@
   margin-left: 0.2rem;
 }
 
+.fp-yy-balance {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.fp-yy-balance--ok {
+  border-left: 4px solid var(--success);
+  background: var(--success-bg);
+}
+
+.fp-yy-balance--warn {
+  border-left: 4px solid var(--warning);
+  background: #fef9c3;
+}
+
+.fp-yy-balance-summary {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.fp-yy-balance-bases {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.fp-yy-balance-bases li + li {
+  margin-top: 0.25rem;
+}
+
 .team-count-form {
   display: flex;
   flex-direction: column;
