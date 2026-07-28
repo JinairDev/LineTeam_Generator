@@ -5,6 +5,8 @@ import com.crew.lineteam.dto.CrewMemberDto;
 import com.crew.lineteam.dto.FpYyBalanceReport;
 import com.crew.lineteam.dto.LineTeamDto;
 import com.crew.lineteam.dto.PinMode;
+import com.crew.lineteam.dto.TeamShellsResponse;
+import com.crew.lineteam.util.DepartmentTeamResolver;
 import com.crew.lineteam.util.GradeTokenUtil;
 import com.crew.lineteam.util.LineQualificationUtil;
 import com.crew.lineteam.util.RankTokenUtil;
@@ -19,11 +21,13 @@ import java.util.stream.Collectors;
  * 라인팀 편성 알고리즘
  * - SEL / PUS 베이스는 라인 코드가 정해진 **고정 팀 수**만큼만 생성 (SEL 61, PUS 8), 전원을 그 팀들에만 배분
  * - 그 외 베이스는 TP 수 기준(최소 1팀)으로 팀 슬롯 생성
+ * - 엑셀 「소속팀」이 채워진 인원은 해당 팀에 사전 배정한 뒤 나머지를 자동 편성
  * - TP/TS 자격 규칙: TP=LJ → TS는 LJ/BX/RS 가능, TP=BX/RS → TS는 LJ만
  * - TS 인원은 자격 규칙을 지키면서 팀별 TS 수가 균등하도록 배분(동률 팀은 무작위)
  * - TP·기타 인원은 팀별 인원이 최대한 맞도록 두되, 가장 적은 팀이 여럿이면 그중 무작위 배치(A101 순서 고정 없음)
  * - SEL·PUS 고정 팀은 인원 상한 없이 전원 배분(그 외 베이스는 팀당 최대 15명 목표)
- * - RANK FP·YY·TS OJT, FROM LJ·BX·RS, 직급 PS·AP·SS·인턴은 팀별 해당 인원 수 최소 팀에 우선 배치, 편성 후 균등 여부 검증
+ * - RANK FP·YY·TS OJT, FROM LJ·BX·RS, 직급 PS·AP·SS·인턴은 팀별 해당 인원 수 최소 팀에 우선 배치
+ * - 1차 편성 후 편차(최대−최소)가 허용치(2명)를 넘는 항목은 팀 간 스왑/이동으로 추가 균등 보정
  * - RANK YY는 같은 베이스 내 YY가 남는 한 모든 팀에 최소 1명 배치 (YY 부족 시 일부 팀은 0명)
  */
 @Service
@@ -31,40 +35,66 @@ import java.util.stream.Collectors;
 public class TeamAssignmentService {
 
     private final FpYyBalanceService fpYyBalanceService;
+    private final EvennessCorrectionService evennessCorrectionService;
 
     private static final int MAX_TEAM_SIZE = 15;
     /** SEL/PUS 고정 라인팀: 인원 전원 배분을 위해 사실상 상한 없음 */
     private static final int UNLIMITED_TEAM = 1_000_000;
 
     public AssignResponse assignWithBalanceReport(List<CrewMemberDto> allCrew, Map<String, Integer> teamCountByBase) {
-        List<LineTeamDto> teams = assign(allCrew, teamCountByBase);
-        FpYyBalanceReport report = fpYyBalanceService.verify(teams);
+        AssignBundle bundle = assignBundle(allCrew, teamCountByBase);
+        FpYyBalanceReport report = fpYyBalanceService.verify(bundle.teams());
         logFpYyBalanceReport(report);
-        return AssignResponse.builder().teams(teams).fpYyBalance(report).build();
+        return AssignResponse.builder()
+                .teams(bundle.teams())
+                .fpYyBalance(report)
+                .departmentSeededCount(bundle.departmentSeeded())
+                .departmentSeedSkippedCount(bundle.departmentSeedSkipped())
+                .build();
     }
 
     /**
-     * 사전 TP/TS 배정용 빈 팀 껍데기만 생성합니다 (멤버 없음).
+     * 사전 TP/TS 배정용 팀 껍데기 생성. 엑셀 소속팀이 있는 인원은 해당 팀에 미리 넣습니다.
      */
-    public List<LineTeamDto> createTeamShells(List<CrewMemberDto> allCrew) {
+    public TeamShellsResponse createTeamShells(List<CrewMemberDto> allCrew) {
         List<CrewMemberDto> crew = assignableCrewOnly(allCrew);
         if (crew.isEmpty()) {
-            return List.of();
+            return TeamShellsResponse.builder()
+                    .teams(List.of())
+                    .departmentSeededCount(0)
+                    .departmentSeedSkippedCount(0)
+                    .build();
         }
-        return buildEmptyTeamShells(crew);
+        List<LineTeamDto> teams = buildEmptyTeamShells(crew);
+        SeedResult seed = seedMembersFromDepartment(teams, crew, new HashSet<>(), new HashSet<>());
+        return TeamShellsResponse.builder()
+                .teams(teams)
+                .departmentSeededCount(seed.seeded())
+                .departmentSeedSkippedCount(seed.skipped())
+                .build();
     }
 
-    public List<LineTeamDto> assign(List<CrewMemberDto> allCrew, Map<String, Integer> teamCountByBase) {
+    private AssignBundle assignBundle(List<CrewMemberDto> allCrew, Map<String, Integer> teamCountByBase) {
         List<CrewMemberDto> crew = assignableCrewOnly(allCrew);
-        if (crew.isEmpty()) return List.of();
+        if (crew.isEmpty()) {
+            return new AssignBundle(List.of(), 0, 0);
+        }
 
         List<LineTeamDto> teams = buildEmptyTeamShells(crew);
 
         Set<String> assignedIds = new HashSet<>();
-        placeTpsBalancedRandom(teams, crew, assignedIds);
+        Set<String> departmentPinnedIds = new HashSet<>();
+        SeedResult seed = seedMembersFromDepartment(teams, crew, assignedIds, departmentPinnedIds);
+        placeRemainingTpsForPinnedTeams(teams, crew, assignedIds);
 
         assignTsAndOthers(teams, crew, assignedIds);
-        return teams;
+        evennessCorrectionService.correct(teams, departmentPinnedIds);
+        return new AssignBundle(teams, seed.seeded(), seed.skipped());
+    }
+
+    /** 하위 호환용 */
+    public List<LineTeamDto> assign(List<CrewMemberDto> allCrew, Map<String, Integer> teamCountByBase) {
+        return assignBundle(allCrew, teamCountByBase).teams();
     }
 
     /** 차출·휴직(구분)은 라인 편성 대상에서 제외 */
@@ -116,31 +146,72 @@ public class TeamAssignmentService {
         return (int) Math.max(1, tpCount);
     }
 
-    /** 같은 베이스 팀에 TP를 배치: 인원이 가장 적은 팀이 여러 개면 그중 무작위(균등 + 잔여 랜덤) */
-    private static void placeTpsBalancedRandom(List<LineTeamDto> teams, List<CrewMemberDto> allCrew, Set<String> assignedIds) {
-        Map<String, List<LineTeamDto>> byBase = teams.stream().collect(Collectors.groupingBy(LineTeamDto::getBase));
-        for (List<LineTeamDto> list : byBase.values()) {
-            list.sort(Comparator.comparingInt(LineTeamDto::getIndexInBase));
+    /**
+     * 엑셀 「소속팀」이 있는 인원을 해당 팀 ID에 미리 넣습니다.
+     * 팀당 TP는 1명만 허용(이미 TP가 있으면 추가 TP는 스킵).
+     */
+    private static SeedResult seedMembersFromDepartment(
+            List<LineTeamDto> teams,
+            List<CrewMemberDto> crew,
+            Set<String> assignedIds,
+            Set<String> departmentPinnedIds) {
+        if (teams == null || teams.isEmpty() || crew == null || crew.isEmpty()) {
+            return new SeedResult(0, 0);
         }
-        List<CrewMemberDto> tps = allCrew.stream().filter(CrewMemberDto::isTP).collect(Collectors.toCollection(ArrayList::new));
-        Collections.shuffle(tps);
-        for (CrewMemberDto tp : tps) {
-            String base = normalizeBase(tp.getBase());
-            List<LineTeamDto> baseTeams = byBase.get(base);
-            if (baseTeams == null || baseTeams.isEmpty()) {
+        Map<String, LineTeamDto> byTeamId = new HashMap<>();
+        Map<String, List<String>> teamIdsByBase = new HashMap<>();
+        for (LineTeamDto t : teams) {
+            if (t == null || t.getTeamId() == null) continue;
+            byTeamId.put(t.getTeamId(), t);
+            String base = normalizeBase(t.getBase());
+            teamIdsByBase.computeIfAbsent(base, k -> new ArrayList<>()).add(t.getTeamId());
+        }
+
+        int seeded = 0;
+        int skipped = 0;
+        for (CrewMemberDto c : crew) {
+            if (c == null || c.getEmployeeId() == null) continue;
+            if (assignedIds.contains(c.getEmployeeId())) continue;
+            String dept = DepartmentTeamResolver.inputDepartment(c);
+            if (dept == null) continue;
+
+            String base = normalizeBase(c.getBase());
+            List<String> idsInBase = teamIdsByBase.getOrDefault(base, List.of());
+            String teamId = DepartmentTeamResolver.resolveTeamId(dept, base, idsInBase);
+            if (teamId == null) {
+                skipped++;
+                System.out.println(String.format(
+                        "[TeamAssignmentService] 소속팀 미매칭 스킵: %s (%s) dept=%s base=%s",
+                        c.getEmployeeId(), c.getName(), dept, base));
                 continue;
             }
-            LineTeamDto target = pickTeamForMember(baseTeams, tp);
-            if (target == null) {
-                target = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
-            }
-            if (target == null) {
+            LineTeamDto team = byTeamId.get(teamId);
+            if (team == null) {
+                skipped++;
                 continue;
             }
-            target.getMembers().add(tp);
-            assignedIds.add(tp.getEmployeeId());
+            if (c.isTP() && team.getMembers().stream().anyMatch(CrewMemberDto::isTP)) {
+                skipped++;
+                System.out.println(String.format(
+                        "[TeamAssignmentService] 소속팀 TP 충돌 스킵: %s → %s (이미 TP 있음)",
+                        c.getEmployeeId(), teamId));
+                continue;
+            }
+            team.getMembers().add(c);
+            assignedIds.add(c.getEmployeeId());
+            departmentPinnedIds.add(c.getEmployeeId());
+            seeded++;
         }
+        if (seeded > 0 || skipped > 0) {
+            System.out.println(String.format(
+                    "[TeamAssignmentService] 소속팀 사전배정: %d명 배치, %d명 스킵", seeded, skipped));
+        }
+        return new SeedResult(seeded, skipped);
     }
+
+    private record SeedResult(int seeded, int skipped) {}
+
+    private record AssignBundle(List<LineTeamDto> teams, int departmentSeeded, int departmentSeedSkipped) {}
 
     private static int maxTeamSize(LineTeamDto t) {
         if ("SEL".equals(t.getBase()) || "PUS".equals(t.getBase())) {
@@ -157,30 +228,40 @@ public class TeamAssignmentService {
             Map<String, Integer> teamCountByBase,
             List<LineTeamDto> previousTeams,
             PinMode pinMode) {
-        List<LineTeamDto> teams = assign(allCrew, teamCountByBase, previousTeams, pinMode);
-        FpYyBalanceReport report = fpYyBalanceService.verify(teams);
+        AssignBundle bundle = assignBundle(allCrew, teamCountByBase, previousTeams, pinMode);
+        FpYyBalanceReport report = fpYyBalanceService.verify(bundle.teams());
         logFpYyBalanceReport(report);
-        return AssignResponse.builder().teams(teams).fpYyBalance(report).build();
+        return AssignResponse.builder()
+                .teams(bundle.teams())
+                .fpYyBalance(report)
+                .departmentSeededCount(bundle.departmentSeeded())
+                .departmentSeedSkippedCount(bundle.departmentSeedSkipped())
+                .build();
     }
 
-    public List<LineTeamDto> assign(
+    private AssignBundle assignBundle(
             List<CrewMemberDto> allCrew,
             Map<String, Integer> teamCountByBase,
             List<LineTeamDto> previousTeams,
             PinMode pinMode) {
-        if (allCrew == null || allCrew.isEmpty()) return List.of();
+        if (allCrew == null || allCrew.isEmpty()) {
+            return new AssignBundle(List.of(), 0, 0);
+        }
         if (previousTeams == null || previousTeams.isEmpty() || pinMode == null) {
-            return assign(allCrew, teamCountByBase);
+            return assignBundle(allCrew, teamCountByBase);
         }
 
         List<CrewMemberDto> crew = assignableCrewOnly(allCrew);
-        if (crew.isEmpty()) return List.of();
+        if (crew.isEmpty()) {
+            return new AssignBundle(List.of(), 0, 0);
+        }
 
         Map<String, CrewMemberDto> byId = crew.stream()
                 .collect(Collectors.toMap(CrewMemberDto::getEmployeeId, c -> c, (a, b) -> a));
 
         List<LineTeamDto> teams = new ArrayList<>();
         Set<String> assignedIds = new HashSet<>();
+        Set<String> departmentPinnedIds = new HashSet<>();
 
         for (LineTeamDto prev : previousTeams) {
             List<CrewMemberDto> keep = new ArrayList<>();
@@ -188,7 +269,8 @@ public class TeamAssignmentService {
                 CrewMemberDto c = byId.get(m.getEmployeeId());
                 if (c == null) continue;
                 if (pinMode == PinMode.BOTH_FIXED) {
-                    if (c.isTP() || c.isTS()) keep.add(c);
+                    // 사전배정 보드에 올라온 전원 유지(소속팀 시드·수동 TP/TS 포함)
+                    keep.add(c);
                 } else if (pinMode == PinMode.TP_FIXED) {
                     if (c.isTP()) keep.add(c);
                 } else if (pinMode == PinMode.TS_FIXED) {
@@ -202,33 +284,86 @@ public class TeamAssignmentService {
                     .members(new ArrayList<>(keep))
                     .build();
             teams.add(team);
-            keep.forEach(x -> assignedIds.add(x.getEmployeeId()));
-        }
-
-        if (pinMode == PinMode.BOTH_FIXED) {
-            assignOthersPhase(teams, crew);
-            return teams;
-        }
-
-        if (pinMode == PinMode.TS_FIXED) {
-            List<CrewMemberDto> tpPool = crew.stream()
-                    .filter(CrewMemberDto::isTP)
-                    .filter(c -> !assignedIds.contains(c.getEmployeeId()))
-                    .collect(Collectors.toCollection(ArrayList::new));
-            Collections.shuffle(tpPool);
-            for (LineTeamDto team : teams) {
-                boolean hasTp = team.getMembers().stream().anyMatch(CrewMemberDto::isTP);
-                if (hasTp) continue;
-                CrewMemberDto pick = pickTpForBase(tpPool, team.getBase());
-                if (pick != null) {
-                    team.getMembers().add(pick);
-                    assignedIds.add(pick.getEmployeeId());
+            for (CrewMemberDto x : keep) {
+                assignedIds.add(x.getEmployeeId());
+                if (DepartmentTeamResolver.hasPrefillDepartment(x)) {
+                    departmentPinnedIds.add(x.getEmployeeId());
                 }
             }
         }
 
+        // 엑셀 소속팀이 있는데 아직 팀에 없는 인원 보강 (API 직접 호출 등)
+        SeedResult seed = seedMembersFromDepartment(teams, crew, assignedIds, departmentPinnedIds);
+        // 알림용: 이전 팀에서 유지된 소속팀 인원 + 이번 시드
+        int seededForNotice = departmentPinnedIds.size();
+
+        if (pinMode == PinMode.BOTH_FIXED) {
+            placeRemainingTpsForPinnedTeams(teams, crew, assignedIds);
+            assignTsAndOthers(teams, crew, assignedIds);
+            evennessCorrectionService.correct(teams, departmentPinnedIds);
+            return new AssignBundle(teams, seededForNotice, seed.skipped());
+        }
+
+        if (pinMode == PinMode.TS_FIXED) {
+            placeRemainingTpsForPinnedTeams(teams, crew, assignedIds);
+        }
+
         assignTsAndOthers(teams, crew, assignedIds);
-        return teams;
+        evennessCorrectionService.correct(teams, departmentPinnedIds);
+        return new AssignBundle(teams, seededForNotice, seed.skipped());
+    }
+
+    public List<LineTeamDto> assign(
+            List<CrewMemberDto> allCrew,
+            Map<String, Integer> teamCountByBase,
+            List<LineTeamDto> previousTeams,
+            PinMode pinMode) {
+        return assignBundle(allCrew, teamCountByBase, previousTeams, pinMode).teams();
+    }
+
+    /**
+     * 이미 고정된 TP는 유지하고, TP가 없는 팀에 미배정 TP를 채웁니다.
+     * 팀이 모두 TP를 가진 뒤에도 TP가 남으면 기존 자동 편성과 같이 최소 인원 팀에 배치합니다.
+     */
+    private static void placeRemainingTpsForPinnedTeams(
+            List<LineTeamDto> teams,
+            List<CrewMemberDto> crew,
+            Set<String> assignedIds) {
+        List<CrewMemberDto> tpPool = crew.stream()
+                .filter(CrewMemberDto::isTP)
+                .filter(c -> !assignedIds.contains(c.getEmployeeId()))
+                .collect(Collectors.toCollection(ArrayList::new));
+        Collections.shuffle(tpPool);
+
+        for (LineTeamDto team : teams) {
+            boolean hasTp = team.getMembers().stream().anyMatch(CrewMemberDto::isTP);
+            if (hasTp) continue;
+            CrewMemberDto pick = pickTpForBase(tpPool, team.getBase());
+            if (pick != null) {
+                team.getMembers().add(0, pick);
+                assignedIds.add(pick.getEmployeeId());
+            }
+        }
+
+        Map<String, List<LineTeamDto>> byBase = teams.stream()
+                .collect(Collectors.groupingBy(t -> normalizeBase(t.getBase()), LinkedHashMap::new, Collectors.toList()));
+        while (!tpPool.isEmpty()) {
+            CrewMemberDto tp = tpPool.remove(0);
+            String base = normalizeBase(tp.getBase());
+            List<LineTeamDto> baseTeams = byBase.get(base);
+            if (baseTeams == null || baseTeams.isEmpty()) {
+                baseTeams = teams;
+            }
+            LineTeamDto target = pickTeamForMember(baseTeams, tp);
+            if (target == null) {
+                target = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
+            }
+            if (target == null) {
+                continue;
+            }
+            target.getMembers().add(tp);
+            assignedIds.add(tp.getEmployeeId());
+        }
     }
 
     private static CrewMemberDto pickTpForBase(List<CrewMemberDto> tpPool, String teamBase) {

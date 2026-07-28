@@ -41,6 +41,7 @@ export function TeamBoard({ teams, balanceReport, onMoveMember }: TeamBoardProps
     () => buildTeamBalanceIssueMap(balanceReport ?? null),
     [balanceReport]
   )
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set())
   const [moveMenu, setMoveMenu] = useState<MoveContextMenu | null>(null)
   const [draggingActive, setDraggingActive] = useState<Active | null>(null)
   const [draggingMember, setDraggingMember] = useState<CrewMember | null>(null)
@@ -53,6 +54,46 @@ export function TeamBoard({ teams, balanceReport, onMoveMember }: TeamBoardProps
       activationConstraint: { distance: 2 },
     })
   )
+
+  const teamIdSet = useMemo(() => new Set(teams.map((t) => t.teamId)), [teams])
+  const collapsedTeams = useMemo(
+    () => teams.filter((t) => collapsedIds.has(t.teamId)),
+    [teams, collapsedIds],
+  )
+  const activeTeams = useMemo(
+    () => teams.filter((t) => !collapsedIds.has(t.teamId)),
+    [teams, collapsedIds],
+  )
+
+  useEffect(() => {
+    setCollapsedIds((prev) => {
+      let changed = false
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (teamIdSet.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed || next.size !== prev.size ? next : prev
+    })
+  }, [teamIdSet])
+
+  const collapseTeam = (teamId: string) => {
+    setCollapsedIds((prev) => {
+      if (prev.has(teamId)) return prev
+      const next = new Set(prev)
+      next.add(teamId)
+      return next
+    })
+  }
+
+  const expandTeam = (teamId: string) => {
+    setCollapsedIds((prev) => {
+      if (!prev.has(teamId)) return prev
+      const next = new Set(prev)
+      next.delete(teamId)
+      return next
+    })
+  }
 
   const openMoveMenu = (
     e: React.MouseEvent,
@@ -151,28 +192,52 @@ export function TeamBoard({ teams, balanceReport, onMoveMember }: TeamBoardProps
         handleDragEnd(e)
       }}
     >
-      <div className="team-board">
-        {teamIssueMap.size > 0 && (
-          <p className="team-board-balance-legend">
-            주황 테두리 팀 — 균등 분배 편차 원인 (많음/적음/미배치)
-          </p>
+      <div className="team-board-layout">
+        {collapsedTeams.length > 0 && (
+          <div className="team-board-dock" aria-label="접힌 팀">
+            {collapsedTeams.map((team) => {
+              const issues = teamIssueMap.get(team.teamId)
+              const warn = Boolean(issues?.length)
+              return (
+                <button
+                  key={team.teamId}
+                  type="button"
+                  className={`team-dock-bubble${warn ? ' team-dock-bubble--warn' : ''}`}
+                  onClick={() => expandTeam(team.teamId)}
+                  title="펼치기"
+                >
+                  <span className="team-dock-bubble-id">{team.teamId}</span>
+                  <span className="team-dock-bubble-count">{team.members.length}</span>
+                </button>
+              )
+            })}
+          </div>
         )}
-        {teams.map((team) => {
-          const dropHint = getTeamMoveDropHint(teams, draggingMember, overTeamId)
-          const isHighlighted = overTeamId === team.teamId
-          return (
-            <TeamColumn
-              key={team.teamId}
-              team={team}
-              otherTeams={teams.filter((t) => t.teamId !== team.teamId)}
-              onMoveMember={onMoveMember}
-              onOpenMoveMenu={openMoveMenu}
-              isDropHighlighted={isHighlighted}
-              tpSwapTarget={isHighlighted && dropHint === 'swap'}
-              balanceIssues={teamIssueMap.get(team.teamId)}
-            />
-          )
-        })}
+        <div className="team-board">
+          {teamIssueMap.size > 0 && (
+            <p className="team-board-balance-legend">
+              주황 테두리 팀 — 균등 분배 편차 원인 (많음/적음/미배치)
+            </p>
+          )}
+          {activeTeams.map((team) => {
+            const dropHint = getTeamMoveDropHint(teams, draggingMember, overTeamId)
+            const isHighlighted = overTeamId === team.teamId
+            return (
+              <TeamColumn
+                key={team.teamId}
+                team={team}
+                otherTeams={teams.filter((t) => t.teamId !== team.teamId)}
+                onMoveMember={onMoveMember}
+                onOpenMoveMenu={openMoveMenu}
+                isDropHighlighted={isHighlighted}
+                tpSwapTarget={isHighlighted && dropHint === 'swap'}
+                balanceIssues={teamIssueMap.get(team.teamId)}
+                collapsible
+                onCollapse={() => collapseTeam(team.teamId)}
+              />
+            )
+          })}
+        </div>
       </div>
       {moveMenu && createPortal(
         <div

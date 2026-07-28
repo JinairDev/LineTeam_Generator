@@ -1,0 +1,80 @@
+.dept-seed-toast {
+  position: fixed;
+  top: 1.1rem;
+  right: 1.1rem;
+  z-index: 1200;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  max-width: min(420px, calc(100vw - 2rem));
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(187, 211, 4, 0.65);
+  background: linear-gradient(135deg, #f7fbe8 0%, #e8f6fc 100%);
+  box-shadow: 0 10px 28px rgba(100, 28, 67, 0.14);
+  color: var(--lj-brown, #641c43);
+  animation: dept-seed-in 0.28s ease-out;
+}
+
+@keyframes dept-seed-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dept-seed-toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dept-seed-toast-title {
+  display: block;
+  font-family: 'Sora', 'Noto Sans KR', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.dept-seed-toast-detail {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(58, 16, 40, 0.72);
+}
+
+.dept-seed-toast-dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--lj-brown, #641c43);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+}
+
+.dept-seed-toast-dismiss:hover {
+  background: rgba(100, 28, 67, 0.08);
+}
+
+.dept-seed-banner {
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(4, 156, 219, 0.35);
+  background: rgba(4, 156, 219, 0.1);
+  color: var(--lj-brown, #641c43);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.dept-seed-banner strong {
+  font-weight: 700;
+  color: var(--lj-cyan-deep, #0380b4);
+}

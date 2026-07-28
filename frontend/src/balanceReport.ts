@@ -1,5 +1,8 @@
 import type { FpYyBaseBalance } from './types'
 
+/** 팀 간(최대−최소) 이 값까지는 균등으로 본다. 백엔드 FpYyBalanceService.MAX_ALLOWED_SPREAD와 동일. */
+export const MAX_ALLOWED_SPREAD = 2
+
 export interface BalanceMetric {
   key: string
   label: string

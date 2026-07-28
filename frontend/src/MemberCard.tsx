@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import type { CrewMember, LineTeam } from './types'
 import { memberHasLeaveStyleStatus, memberStatusBadgeText } from './memberStatusUi'
+import { MemberMetaBadges, FromBadge } from './memberMetaBadges'
 
 interface MemberCardProps {
   member: CrewMember
@@ -47,18 +48,13 @@ function MemberCardInner({
       <div className="member-card-content">
         <div className="member-card-body" {...listeners} {...attributes}>
           <div className="member-id-grade">
-            {member.employeeId} · {member.gender || '-'} · {member.grade || '-'}
+            <FromBadge member={member} />
+            <span>
+              {member.employeeId} · {member.gender || '-'} · {member.grade || '-'}
+            </span>
           </div>
           <div className="member-name">{member.name || '-'}</div>
-          <div className="member-meta">
-            <span>{(member.fromColumn ?? member.rank)?.trim() || '-'}</span>
-            <span className="member-meta-sep"> · </span>
-            <span>{member.positionCode || '-'}</span>
-            <span className="member-meta-sep"> · </span>
-            <span>{member.annc?.trim() || '-'}</span>
-            <span className="member-meta-sep"> · </span>
-            <span>{(member.qualification ?? member.rank)?.trim() || '-'}</span>
-          </div>
+          <MemberMetaBadges member={member} />
         </div>
       </div>
     </div>

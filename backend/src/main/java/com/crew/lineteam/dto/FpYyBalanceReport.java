@@ -15,7 +15,7 @@ import java.util.List;
 @AllArgsConstructor
 public class FpYyBalanceReport {
 
-    /** FP·YY·TS OJT·FROM LJ/BX/RS·직급 PS/AP/SS/인턴이 허용 편차(최대−최소 ≤ 1) 이내이면 true */
+    /** FP·YY·TS OJT·FROM LJ/BX/RS·직급 PS/AP/SS/인턴이 허용 편차(최대−최소 ≤ 2) 이내이면 true */
     private boolean balanced;
 
     private String summary;

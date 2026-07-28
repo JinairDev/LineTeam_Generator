@@ -8,6 +8,6 @@ public enum PinMode {
     TP_FIXED,
     /** 직전 팀에 있던 TS만 유지, TP는 풀에서 팀에 배정 후 TS·기타 재배치 */
     TS_FIXED,
-    /** 직전 팀에 있던 TP·TS 모두 유지, 그 외 멤버만 재배치 */
+    /** 직전 팀에 있던 TP·TS 유지. 비어 있는 TP 자리·미배정 TS는 자동 배정 후 나머지 팀원 배치 */
     BOTH_FIXED
 }

@@ -18,10 +18,13 @@ import java.util.stream.Collectors;
 
 /**
  * RANK FP·YY·TS OJT, FROM LJ·BX·RS, 직급 PS·AP·SS·인턴 인원의 팀별 균등 분배 검증.
- * 균등 기준: 동일 베이스 내 팀별 인원 수의 최대−최소가 1 이하 (인원 0명인 팀 포함).
+ * 균등 기준: 동일 베이스 내 팀별 인원 수의 최대−최소가 {@link #MAX_ALLOWED_SPREAD} 이하 (인원 0명인 팀 포함).
  */
 @Service
 public class FpYyBalanceService {
+
+    /** 팀 간(최대−최소) 이 값까지는 균등으로 본다. */
+    public static final int MAX_ALLOWED_SPREAD = 2;
 
     public FpYyBalanceReport verify(List<LineTeamDto> teams) {
         if (teams == null || teams.isEmpty()) {
@@ -167,16 +170,16 @@ public class FpYyBalanceService {
             internMin = 0;
         }
 
-        boolean fpBalanced = totalFp == 0 || (fpMax - fpMin <= 1);
-        boolean yyBalanced = totalYy == 0 || (yyMax - yyMin <= 1);
-        boolean tsOjtBalanced = totalTsOjt == 0 || (tsOjtMax - tsOjtMin <= 1);
-        boolean ljBalanced = totalLj == 0 || (ljMax - ljMin <= 1);
-        boolean bxBalanced = totalBx == 0 || (bxMax - bxMin <= 1);
-        boolean rsBalanced = totalRs == 0 || (rsMax - rsMin <= 1);
-        boolean psBalanced = totalPs == 0 || (psMax - psMin <= 1);
-        boolean apBalanced = totalAp == 0 || (apMax - apMin <= 1);
-        boolean ssBalanced = totalSs == 0 || (ssMax - ssMin <= 1);
-        boolean internBalanced = totalIntern == 0 || (internMax - internMin <= 1);
+        boolean fpBalanced = totalFp == 0 || (fpMax - fpMin <= MAX_ALLOWED_SPREAD);
+        boolean yyBalanced = totalYy == 0 || (yyMax - yyMin <= MAX_ALLOWED_SPREAD);
+        boolean tsOjtBalanced = totalTsOjt == 0 || (tsOjtMax - tsOjtMin <= MAX_ALLOWED_SPREAD);
+        boolean ljBalanced = totalLj == 0 || (ljMax - ljMin <= MAX_ALLOWED_SPREAD);
+        boolean bxBalanced = totalBx == 0 || (bxMax - bxMin <= MAX_ALLOWED_SPREAD);
+        boolean rsBalanced = totalRs == 0 || (rsMax - rsMin <= MAX_ALLOWED_SPREAD);
+        boolean psBalanced = totalPs == 0 || (psMax - psMin <= MAX_ALLOWED_SPREAD);
+        boolean apBalanced = totalAp == 0 || (apMax - apMin <= MAX_ALLOWED_SPREAD);
+        boolean ssBalanced = totalSs == 0 || (ssMax - ssMin <= MAX_ALLOWED_SPREAD);
+        boolean internBalanced = totalIntern == 0 || (internMax - internMin <= MAX_ALLOWED_SPREAD);
         int teamsWithoutYy = (int) sorted.stream()
                 .filter(t -> countRankToken(t, RankTokenUtil.YY) == 0)
                 .count();
@@ -258,7 +261,8 @@ public class FpYyBalanceService {
             return "검증할 팀이 없습니다.";
         }
         if (allBalanced) {
-            return "모든 베이스에서 RANK FP·YY·TS OJT, FROM LJ·BX·RS, 직급 PS·AP·SS·인턴이 팀별로 균등하게 분배되었습니다 (팀당 편차 ≤ 1명).";
+            return "모든 베이스에서 RANK FP·YY·TS OJT, FROM LJ·BX·RS, 직급 PS·AP·SS·인턴이 팀별로 균등하게 분배되었습니다 (팀당 편차 ≤ "
+                    + MAX_ALLOWED_SPREAD + "명).";
         }
         StringBuilder sb = new StringBuilder("일부 베이스에서 분배가 불균형합니다. ");
         for (FpYyBalanceReport.BaseBalance b : bases) {

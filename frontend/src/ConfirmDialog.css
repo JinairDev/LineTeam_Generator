@@ -1,0 +1,108 @@
+.confirm-dialog-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.confirm-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  border-radius: 0;
+  background: rgba(58, 16, 40, 0.42);
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.confirm-dialog-backdrop:hover {
+  background: rgba(58, 16, 40, 0.42);
+}
+
+.confirm-dialog-backdrop:disabled {
+  cursor: wait;
+  opacity: 1;
+}
+
+.confirm-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 420px);
+  padding: 1.35rem 1.4rem 1.25rem;
+  border-radius: 18px;
+  background:
+    linear-gradient(165deg, rgba(247, 251, 232, 0.98) 0%, #fff 55%, rgba(238, 248, 252, 0.98) 100%);
+  border: 1px solid rgba(100, 28, 67, 0.14);
+  box-shadow: 0 24px 48px rgba(58, 16, 40, 0.22);
+  animation: confirm-dialog-in 0.22s ease-out;
+}
+
+@keyframes confirm-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.confirm-dialog-brand {
+  margin: 0 0 0.35rem;
+  font-family: 'Sora', 'Noto Sans KR', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--lj-brown, #641c43);
+}
+
+.confirm-dialog-title {
+  margin: 0 0 0.55rem;
+  font-family: 'Sora', 'Noto Sans KR', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--lj-ink, #3a1028);
+  line-height: 1.3;
+}
+
+.confirm-dialog-message {
+  margin: 0 0 1.25rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: rgba(58, 16, 40, 0.72);
+}
+
+.confirm-dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.confirm-dialog-cancel {
+  background: transparent !important;
+  color: var(--lj-brown, #641c43) !important;
+  border: 2px solid rgba(100, 28, 67, 0.28) !important;
+  box-shadow: none !important;
+}
+
+.confirm-dialog-cancel:hover:not(:disabled) {
+  background: rgba(100, 28, 67, 0.06) !important;
+  border-color: var(--lj-brown, #641c43) !important;
+}
+
+.confirm-dialog-confirm {
+  background: var(--lj-gold, #bbd304) !important;
+  color: var(--lj-brown, #641c43) !important;
+  border: 2px solid transparent !important;
+  font-weight: 800 !important;
+  box-shadow: 0 6px 18px rgba(187, 211, 4, 0.4) !important;
+}
+
+.confirm-dialog-confirm:hover:not(:disabled) {
+  background: var(--lj-gold-deep, #9fb003) !important;
+  color: #fff !important;
+}

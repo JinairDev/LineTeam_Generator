@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { CrewMember } from './types'
 import { memberHasLeaveStyleStatus, memberStatusBadgeText } from './memberStatusUi'
+import { MemberMetaBadges, FromBadge } from './memberMetaBadges'
 
 interface MemberCardPreviewProps {
   member: CrewMember
@@ -20,18 +21,13 @@ function MemberCardPreviewInner({ member }: MemberCardPreviewProps) {
       <div className="member-card-floating-badge">이동 중</div>
       {statusBadge && <span className="member-card-status-badge">{statusBadge}</span>}
       <div className="member-id-grade">
-        {member.employeeId} · {member.gender || '-'} · {member.grade || '-'}
+        <FromBadge member={member} />
+        <span>
+          {member.employeeId} · {member.gender || '-'} · {member.grade || '-'}
+        </span>
       </div>
       <div className="member-name member-name-floating">{member.name || '-'}</div>
-      <div className="member-meta">
-        <span>{(member.fromColumn ?? member.rank)?.trim() || '-'}</span>
-        <span className="member-meta-sep"> · </span>
-        <span>{member.positionCode || '-'}</span>
-        <span className="member-meta-sep"> · </span>
-        <span>{member.annc?.trim() || '-'}</span>
-        <span className="member-meta-sep"> · </span>
-        <span>{(member.qualification ?? member.rank)?.trim() || '-'}</span>
-      </div>
+      <MemberMetaBadges member={member} />
     </div>
   )
 }

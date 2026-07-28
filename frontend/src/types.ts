@@ -96,6 +96,14 @@ export interface FpYyBalanceReport {
 export interface AssignResponse {
   teams: LineTeam[]
   fpYyBalance?: FpYyBalanceReport
+  departmentSeededCount?: number
+  departmentSeedSkippedCount?: number
+}
+
+export interface TeamShellsResponse {
+  teams: LineTeam[]
+  departmentSeededCount?: number
+  departmentSeedSkippedCount?: number
 }
 
 export interface MoveMemberResponse {

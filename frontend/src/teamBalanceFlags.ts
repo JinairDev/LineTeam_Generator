@@ -1,5 +1,5 @@
 import type { FpYyBalanceReport, FpYyTeamCount } from './types'
-import { metricsForBase } from './balanceReport'
+import { MAX_ALLOWED_SPREAD, metricsForBase } from './balanceReport'
 
 export type TeamBalanceIssueKind = 'high' | 'low' | 'missing'
 
@@ -58,7 +58,7 @@ export function buildTeamBalanceIssueMap(
     for (const metric of metrics) {
       if (metric.ok || metric.total === 0) continue
       const spread = metric.max - metric.min
-      if (spread <= 1) continue
+      if (spread <= MAX_ALLOWED_SPREAD) continue
 
       for (const team of base.teams) {
         const count = countForMetric(team, metric.key)

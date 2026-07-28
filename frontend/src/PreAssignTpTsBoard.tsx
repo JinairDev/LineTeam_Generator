@@ -69,7 +69,8 @@ function UnassignedPool({
         <span className="pre-assign-pool-count">{pool.length}명</span>
       </div>
       <p className="pre-assign-pool-hint">
-        카드를 드래그해 팀에 배치하세요. 팀당 <strong>TP는 1명</strong>이며, 이미 TP가 있는 팀에 놓으면 <strong>교체</strong>됩니다.
+        원하는 만큼만 배치해도 됩니다. 팀당 <strong>TP는 1명</strong>이며, 이미 TP가 있는 팀에 놓으면 <strong>교체</strong>됩니다.
+        남은 인원은 「나머지 자동 편성」에서 채워집니다.
       </p>
       <div
         ref={setNodeRef}

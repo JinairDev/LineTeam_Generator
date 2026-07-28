@@ -1,4 +1,4 @@
-import type { AssignResponse, CrewMember, FpYyBalanceReport, LineTeam, MoveMemberResponse } from './types'
+import type { AssignResponse, CrewMember, FpYyBalanceReport, LineTeam, MoveMemberResponse, TeamShellsResponse } from './types'
 import { devGoogleCsvProxyUrl, parseGoogleSheetUrl } from './googleSheetExport'
 
 const API = '/api'
@@ -95,7 +95,7 @@ export interface TeamCountByBase {
 /** 재편성 시 TP/TS 고정 모드 */
 export type PinMode = 'TP_FIXED' | 'TS_FIXED' | 'BOTH_FIXED'
 
-export async function createTeamShells(crew: CrewMember[]): Promise<LineTeam[]> {
+export async function createTeamShells(crew: CrewMember[]): Promise<TeamShellsResponse> {
   let res: Response
   try {
     res = await fetch(`${API}/teams/shells`, {

@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react'
 import type { FpYyBalanceReport } from './types'
 import type { BalanceMoveIssue } from './balanceDiff'
 import { baseHasIssues, formatMetricDisplay, metricsForBase } from './balanceReport'
+import type { BalanceMetric } from './balanceReport'
+import { BALANCE_GAP_OVERVIEW, metricGapHint } from './balanceGapReason'
 import './BalanceReportCard.css'
 
 interface BalanceReportCardProps {
@@ -10,21 +13,15 @@ interface BalanceReportCardProps {
 }
 
 function MetricChip({
-  label,
-  total,
-  min,
-  max,
-  ok,
+  metric,
   highlighted,
 }: {
-  label: string
-  total: number
-  min: number
-  max: number
-  ok: boolean
+  metric: BalanceMetric
   highlighted?: boolean
 }) {
+  const { label, total, min, max, ok } = metric
   const display = formatMetricDisplay(total, min, max, ok)
+  const hint = metricGapHint(metric)
   return (
     <div
       className={`balance-metric ${ok ? 'balance-metric--ok' : 'balance-metric--warn'}${highlighted ? ' balance-metric--highlight' : ''}`}
@@ -35,6 +32,7 @@ function MetricChip({
       <span className={`balance-metric-verdict${ok ? ' balance-metric-verdict--ok' : ''}`}>
         {display.verdict}
       </span>
+      {hint && <p className="balance-metric-hint">{hint}</p>}
     </div>
   )
 }
@@ -45,40 +43,53 @@ export function BalanceReportCard({ report, moveIssues, onDismissMoveIssues }: B
     0,
   )
 
+  const [expanded, setExpanded] = useState(true)
+
+  useEffect(() => {
+    if (moveIssues && moveIssues.length > 0) {
+      setExpanded(true)
+    }
+  }, [moveIssues])
+
   const highlightedKeys = new Set(
     (moveIssues ?? []).map((i) => `${i.base}:${i.label}`)
   )
 
   const isHighlighted = (base: string, label: string) => highlightedKeys.has(`${base}:${label}`)
 
+  const showGapOverview = !report.balanced || warnCount > 0
+
   return (
     <div
-      className={`balance-report card ${report.balanced ? 'balance-report--ok' : 'balance-report--warn'}`}
+      className={`balance-report card ${report.balanced ? 'balance-report--ok' : 'balance-report--warn'}${expanded ? '' : ' balance-report--collapsed'}`}
       role="status"
     >
-      <div className="balance-report-header">
-        <h3 className="balance-report-title">팀별 균등 분배 검증</h3>
+      <button
+        type="button"
+        className="balance-report-header balance-report-header--toggle"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span className="balance-report-header-main">
+          <span className="balance-report-chevron" aria-hidden>
+            {expanded ? '▾' : '▸'}
+          </span>
+          <h3 className="balance-report-title">팀별 균등 분배 검증</h3>
+        </span>
         <span className={`balance-report-badge ${report.balanced ? 'balance-report-badge--ok' : 'balance-report-badge--warn'}`}>
           {report.balanced ? '모두 균형' : `주의 ${warnCount}건`}
         </span>
-      </div>
+      </button>
 
-      <div className="balance-report-guide">
-        <p>
-          <strong>전체 N명</strong> — 이 베이스에 속한 해당 항목(FP, LJ 등) 인원 합계입니다.
-          부족·과다가 아니라 <em>총량</em>입니다.
-        </p>
-        <p>
-          <strong>적은 팀 · 많은 팀</strong> — 같은 베이스 안 팀들 중, 그 항목을
-          <em>가장 적게</em> 가진 팀과 <em>가장 많이</em> 가진 팀 인원입니다.
-        </p>
-        <p>
-          <strong>✓ 균등</strong> — 팀 간 차이 1명 이하 ·{' '}
-          <strong>⚠ 불균형</strong> — 차이 2명 이상 (어떤 팀은 많고 어떤 팀은 적음)
-        </p>
-      </div>
-
-      <p className="balance-report-live">팀원 이동 시 실시간 반영 · 주황 테두리 팀이 편차 원인</p>
+      {expanded && (
+        <div className="balance-report-body">
+      <p className="balance-report-legend">
+        <strong>✓ 균등</strong> 차이 2명 이하
+        <span className="balance-report-legend-sep">·</span>
+        <strong>⚠ 불균형</strong> 차이 3명 이상
+        <span className="balance-report-legend-sep">·</span>
+        이동 시 실시간 반영 · 주황 테두리 = 편차 원인 팀
+      </p>
 
       {moveIssues && moveIssues.length > 0 && (
         <div className="balance-move-alert" role="alert">
@@ -127,16 +138,12 @@ export function BalanceReportCard({ report, moveIssues, onDismissMoveIssues }: B
 
               {hasIssues && (
                 <div className="balance-section">
-                  <p className="balance-section-label">팀 간 격차 큼</p>
+                  <p className="balance-section-label">불균형 항목</p>
                   <div className="balance-metric-grid">
                     {issues.map((m) => (
                       <MetricChip
                         key={m.key}
-                        label={m.label}
-                        total={m.total}
-                        min={m.min}
-                        max={m.max}
-                        ok={false}
+                        metric={m}
                         highlighted={isHighlighted(b.base, m.label)}
                       />
                     ))}
@@ -146,16 +153,12 @@ export function BalanceReportCard({ report, moveIssues, onDismissMoveIssues }: B
 
               {okMetrics.length > 0 && (
                 <div className="balance-section">
-                  <p className="balance-section-label">{hasIssues ? '팀 간 균등 분배됨' : '항목'}</p>
+                  <p className="balance-section-label">균등 분배된 항목</p>
                   <div className="balance-metric-grid balance-metric-grid--compact">
                     {okMetrics.map((m) => (
                       <MetricChip
                         key={m.key}
-                        label={m.label}
-                        total={m.total}
-                        min={m.min}
-                        max={m.max}
-                        ok
+                        metric={m}
                         highlighted={isHighlighted(b.base, m.label)}
                       />
                     ))}
@@ -166,6 +169,20 @@ export function BalanceReportCard({ report, moveIssues, onDismissMoveIssues }: B
           )
         })}
       </div>
+
+      {showGapOverview && (
+        <details className="balance-gap-overview" open={false}>
+          <summary>{BALANCE_GAP_OVERVIEW.title}</summary>
+          <ol className="balance-gap-overview-list">
+            {BALANCE_GAP_OVERVIEW.steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+          <p className="balance-gap-overview-tip">{BALANCE_GAP_OVERVIEW.tip}</p>
+        </details>
+      )}
+        </div>
+      )}
     </div>
   )
 }

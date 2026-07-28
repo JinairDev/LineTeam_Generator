@@ -10,6 +10,7 @@ import com.crew.lineteam.dto.FpYyBalanceReport;
 import com.crew.lineteam.dto.GoogleSpreadsheetImportRequest;
 import com.crew.lineteam.dto.LineTeamDto;
 import com.crew.lineteam.dto.MoveMemberResponse;
+import com.crew.lineteam.dto.TeamShellsResponse;
 import com.crew.lineteam.service.ExcelService;
 import com.crew.lineteam.service.FpYyBalanceService;
 import com.crew.lineteam.service.GoogleSpreadsheetImportService;
@@ -134,21 +135,21 @@ public class CrewLineTeamController {
     }
 
     /**
-     * 사전 TP/TS 배정용: 편성 규칙에 맞는 빈 팀 껍데기 목록 생성
+     * 사전 TP/TS 배정용: 편성 규칙에 맞는 팀 껍데기 + 소속팀 선배치 결과
      */
     @PostMapping("/teams/shells")
-    public ResponseEntity<List<LineTeamDto>> createTeamShells(@RequestBody CreateTeamShellsRequest request) {
+    public ResponseEntity<TeamShellsResponse> createTeamShells(@RequestBody CreateTeamShellsRequest request) {
         if (request == null || request.getCrew() == null) {
             throw new IllegalArgumentException("승무원 목록이 없습니다.");
         }
         if (request.getCrew().isEmpty()) {
             throw new IllegalArgumentException("승무원 목록이 비어 있습니다.");
         }
-        List<LineTeamDto> shells = teamAssignmentService.createTeamShells(request.getCrew());
-        if (shells.isEmpty()) {
+        TeamShellsResponse response = teamAssignmentService.createTeamShells(request.getCrew());
+        if (response.getTeams() == null || response.getTeams().isEmpty()) {
             throw new IllegalArgumentException("편성 대상 승무원이 없습니다. (차출·휴직 제외 후 인원 확인)");
         }
-        return ResponseEntity.ok(shells);
+        return ResponseEntity.ok(response);
     }
 
     /**

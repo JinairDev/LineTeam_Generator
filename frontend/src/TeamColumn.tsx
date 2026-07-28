@@ -21,6 +21,9 @@ interface TeamColumnProps {
   tpSwapTarget?: boolean
   /** 균등 분배 검증에서 이탈한 항목 */
   balanceIssues?: TeamBalanceIssue[]
+  /** 편성 결과: 헤더 클릭 시 상단 버블로 접기 */
+  collapsible?: boolean
+  onCollapse?: () => void
   onMoveMember: (
     employeeId: string,
     fromTeamId: string,
@@ -43,6 +46,8 @@ function TeamColumnInner({
   isDropHighlighted,
   tpSwapTarget,
   balanceIssues,
+  collapsible,
+  onCollapse,
 }: TeamColumnProps) {
   const isEmpty = team.members.length === 0
   const hasBalanceIssues = Boolean(balanceIssues?.length)
@@ -61,10 +66,27 @@ function TeamColumnInner({
       ref={setTeamDropRef}
       className={`team-column card team-card${showDropTarget ? ' drop-target' : ''}${tpSwapTarget ? ' tp-swap-target' : ''}${hasBalanceIssues ? ' team-column--balance-warn' : ''}${teamDropEnabled && isEmpty ? ' team-column-empty-preassign' : ''}${!teamDropEnabled ? ' team-column-droppable' : ''}`}
     >
-      <div className="team-header">
-        <span className="team-id">{team.teamId}</span>
-        <span className="team-count">{team.members.length}명</span>
-      </div>
+      {collapsible ? (
+        <button
+          type="button"
+          className="team-header team-header--toggle"
+          onClick={onCollapse}
+          title="접어서 위로 보내기"
+        >
+          <span className="team-header-main">
+            <span className="team-collapse-chevron" aria-hidden>
+              ▴
+            </span>
+            <span className="team-id">{team.teamId}</span>
+          </span>
+          <span className="team-count">{team.members.length}명</span>
+        </button>
+      ) : (
+        <div className="team-header">
+          <span className="team-id">{team.teamId}</span>
+          <span className="team-count">{team.members.length}명</span>
+        </div>
+      )}
       {hasBalanceIssues && (
         <div className="team-balance-flags" role="note">
           {balanceIssues!.map((issue: TeamBalanceIssue) => (
