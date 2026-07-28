@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { FpYyBalanceReport, LineTeam } from './types'
 import {
   uploadExcel,
   uploadCrewCsvText,
   uploadFromGoogleSpreadsheet,
   assignTeams,
+  createTeamShells,
   moveMember,
   exportExcel,
   type CrewUploadResponse,
@@ -13,9 +14,13 @@ import {
 } from './api'
 import { fetchGoogleSheetCsvWithSelectedAccount } from './googleSheetsOAuth'
 import { TeamBoard } from './TeamBoard'
+import { PreAssignTpTsBoard } from './PreAssignTpTsBoard'
+import { BalanceReportCard } from './BalanceReportCard'
+import { detectBalanceMoveIssues, type BalanceMoveIssue } from './balanceDiff'
+import { countTpTs, filterTpTsForPreAssign } from './rankToken'
 import './App.css'
 
-type Step = 'upload' | 'review' | 'assigned'
+type Step = 'upload' | 'review' | 'preAssignChoice' | 'preAssign' | 'assigned'
 
 function App() {
   const hasGoogleClientId = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim())
@@ -32,10 +37,15 @@ function App() {
   const [exportMemberSort, setExportMemberSort] = useState<ExportMemberSort>('employeeId')
   const [importColumnHeaders, setImportColumnHeaders] = useState<string[]>([])
   const [fpYyBalance, setFpYyBalance] = useState<FpYyBalanceReport | null>(null)
+  const [balanceMoveIssues, setBalanceMoveIssues] = useState<BalanceMoveIssue[] | null>(null)
+  const fpYyBalanceRef = useRef(fpYyBalance)
+  fpYyBalanceRef.current = fpYyBalance
+  const [preAssignPool, setPreAssignPool] = useState<import('./types').CrewMember[]>([])
 
   const applyAssignResult = useCallback((result: { teams: LineTeam[]; fpYyBalance?: FpYyBalanceReport }) => {
     setTeams(result.teams)
     setFpYyBalance(result.fpYyBalance ?? null)
+    setBalanceMoveIssues(null)
     setStep('assigned')
   }, [])
 
@@ -74,11 +84,17 @@ function App() {
     }
   }, [])
 
-  const onAssignFromReview = useCallback(async () => {
+  const onAssignFromReview = useCallback(() => {
     if (crew.length === 0) {
       setError('편성할 승무원 데이터가 없습니다.')
       return
     }
+    setError(null)
+    setStep('preAssignChoice')
+  }, [crew])
+
+  const onSkipPreAssign = useCallback(async () => {
+    if (crew.length === 0) return
     setError(null)
     setLoading(true)
     try {
@@ -91,6 +107,48 @@ function App() {
     }
   }, [crew, applyAssignResult])
 
+  const onStartPreAssign = useCallback(async () => {
+    if (crew.length === 0) return
+    const tpTs = filterTpTsForPreAssign(crew)
+    if (tpTs.length === 0) {
+      setError('편성 대상 TP/TS가 없습니다. 자동 편성을 이용해 주세요.')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const shells = await createTeamShells(crew)
+      setTeams(shells)
+      setPreAssignPool(tpTs)
+      setStep('preAssign')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '팀 생성 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }, [crew])
+
+  const onCompletePreAssign = useCallback(async () => {
+    if (crew.length === 0 || teams.length === 0) return
+    if (preAssignPool.length > 0) {
+      setError(`미배정 TP/TS가 ${preAssignPool.length}명 남았습니다. 모두 팀에 배정해 주세요.`)
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const result = await assignTeams(crew, undefined, {
+        pinMode: 'BOTH_FIXED',
+        previousTeams: teams,
+      })
+      applyAssignResult(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '편성 중 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }, [crew, teams, preAssignPool, applyAssignResult])
+
   const onBackToUpload = useCallback(() => {
     setStep('upload')
     setTeams([])
@@ -100,6 +158,8 @@ function App() {
     setCsvPasteText('')
     setError(null)
     setFpYyBalance(null)
+    setBalanceMoveIssues(null)
+    setPreAssignPool([])
   }, [])
 
   const onCsvPasteSubmit = useCallback(async () => {
@@ -212,15 +272,24 @@ function App() {
       toIndex?: number
     ) => {
       setError(null)
+      const prevBalance = fpYyBalanceRef.current
       try {
-        const next = await moveMember(
+        const result = await moveMember(
           teams,
           employeeId,
           fromTeamId,
           toTeamId,
           toIndex
         )
-        setTeams(next)
+        setTeams(result.teams)
+        const report = result.fpYyBalance ?? null
+        setFpYyBalance(report)
+        if (report) {
+          const issues = detectBalanceMoveIssues(prevBalance, report)
+          setBalanceMoveIssues(issues.length > 0 ? issues : null)
+        } else {
+          setBalanceMoveIssues(null)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : '이동 중 오류가 발생했습니다.')
       }
@@ -350,7 +419,7 @@ function App() {
           <section className="section card">
             <h2>업로드 파일 확인</h2>
             <p className="section-desc">
-              아래 데이터가 편성 대상이 맞는지 확인한 뒤 <strong>편성 시작</strong> 버튼을 눌러주세요.
+              아래 데이터가 편성 대상이 맞는지 확인한 뒤 <strong>다음</strong> 버튼을 눌러주세요.
             </p>
             <div className="review-meta">
               <span>파일명: <strong>{uploadedExcelName ?? '-'}</strong></span>
@@ -393,9 +462,90 @@ function App() {
                 onClick={onAssignFromReview}
                 disabled={loading}
               >
-                {loading ? '편성 중…' : '편성 시작'}
+                다음
               </button>
             </div>
+          </section>
+        )}
+
+        {step === 'preAssignChoice' && (
+          <section className="section card pre-assign-choice">
+            <h2>사전 TP/TS를 배정하시겠습니까?</h2>
+            <p className="section-desc">
+              팀장(TP)과 사무장(TS)을 직접 팀에 배치한 뒤, 나머지 승무원은 기존 자동 편성 규칙으로 배정됩니다.
+            </p>
+            <div className="pre-assign-choice-stats">
+              {(() => {
+                const { tp, ts } = countTpTs(crew)
+                return (
+                  <>
+                    <span>편성 대상 TP <strong>{tp}</strong>명</span>
+                    <span>편성 대상 TS <strong>{ts}</strong>명</span>
+                  </>
+                )
+              })()}
+            </div>
+            <div className="section-actions pre-assign-choice-actions">
+              <button type="button" className="btn btn-large" onClick={() => setStep('review')} disabled={loading}>
+                이전
+              </button>
+              <button
+                type="button"
+                className="btn btn-large"
+                onClick={onSkipPreAssign}
+                disabled={loading}
+              >
+                {loading ? '편성 중…' : '아니오, 자동 편성'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-large btn-primary"
+                onClick={onStartPreAssign}
+                disabled={loading}
+              >
+                {loading ? '준비 중…' : '예, 직접 배정'}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {step === 'preAssign' && teams.length > 0 && (
+          <section className="section">
+            <div className="section-header">
+              <h2>TP/TS 사전 배정</h2>
+              <div className="section-actions">
+                <button
+                  type="button"
+                  className="btn btn-large"
+                  onClick={() => setStep('preAssignChoice')}
+                  disabled={loading}
+                >
+                  이전
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-large btn-primary"
+                  onClick={onCompletePreAssign}
+                  disabled={loading || preAssignPool.length > 0}
+                >
+                  {loading ? '편성 중…' : '나머지 자동 편성'}
+                </button>
+              </div>
+            </div>
+            <p className="section-desc pre-assign-desc">
+              왼쪽 미배정 목록에서 TP/TS를 팀 카드로 드래그해 배치하세요.
+              {preAssignPool.length > 0 && (
+                <span className="pre-assign-remaining">
+                  {' '}미배정 <strong>{preAssignPool.length}</strong>명 남음
+                </span>
+              )}
+            </p>
+            <PreAssignTpTsBoard
+              teams={teams}
+              pool={preAssignPool}
+              onTeamsChange={setTeams}
+              onPoolChange={setPreAssignPool}
+            />
           </section>
         )}
 
@@ -477,30 +627,13 @@ function App() {
               <span className="stat">총 승무원 <strong>{teams.reduce((s, t) => s + t.members.length, 0)}</strong>명</span>
             </div>
             {fpYyBalance && (
-              <div
-                className={`fp-yy-balance card ${fpYyBalance.balanced ? 'fp-yy-balance--ok' : 'fp-yy-balance--warn'}`}
-                role="status"
-              >
-                <p className="fp-yy-balance-summary">{fpYyBalance.summary}</p>
-                {fpYyBalance.bases.length > 0 && (
-                  <ul className="fp-yy-balance-bases">
-                    {fpYyBalance.bases.map((b) => (
-                      <li key={b.base}>
-                        <strong>{b.base}</strong>
-                        {' — '}
-                        FP {b.totalFp}명 (팀당 {b.fpMinPerTeam}~{b.fpMaxPerTeam})
-                        {b.fpBalanced ? ' ✓' : ' ⚠'}
-                        {', '}
-                        YY {b.totalYy}명 (팀당 {b.yyMinPerTeam}~{b.yyMaxPerTeam})
-                        {b.yyMinimumCoverageMet ? ' ✓' : ' ⚠'}
-                        {b.teamsWithoutYy > 0 ? ` · 미배치 ${b.teamsWithoutYy}팀` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              <BalanceReportCard
+                report={fpYyBalance}
+                moveIssues={balanceMoveIssues}
+                onDismissMoveIssues={() => setBalanceMoveIssues(null)}
+              />
             )}
-            <TeamBoard teams={teams} onMoveMember={onMoveMember} />
+            <TeamBoard teams={teams} balanceReport={fpYyBalance} onMoveMember={onMoveMember} />
           </section>
         )}
       </main>

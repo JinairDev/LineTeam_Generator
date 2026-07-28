@@ -29,6 +29,14 @@ export interface FpYyTeamCount {
   teamId: string
   fpCount: number
   yyCount: number
+  tsOjtCount: number
+  ljCount: number
+  bxCount: number
+  rsCount: number
+  psCount: number
+  apCount: number
+  ssCount: number
+  internCount: number
 }
 
 export interface FpYyBaseBalance {
@@ -36,12 +44,44 @@ export interface FpYyBaseBalance {
   teamCount: number
   totalFp: number
   totalYy: number
+  totalTsOjt: number
   fpBalanced: boolean
   yyBalanced: boolean
+  tsOjtBalanced: boolean
   fpMinPerTeam: number
   fpMaxPerTeam: number
   yyMinPerTeam: number
   yyMaxPerTeam: number
+  tsOjtMinPerTeam: number
+  tsOjtMaxPerTeam: number
+  totalLj: number
+  totalBx: number
+  totalRs: number
+  ljBalanced: boolean
+  bxBalanced: boolean
+  rsBalanced: boolean
+  ljMinPerTeam: number
+  ljMaxPerTeam: number
+  bxMinPerTeam: number
+  bxMaxPerTeam: number
+  rsMinPerTeam: number
+  rsMaxPerTeam: number
+  totalPs: number
+  totalAp: number
+  totalSs: number
+  totalIntern: number
+  psBalanced: boolean
+  apBalanced: boolean
+  ssBalanced: boolean
+  internBalanced: boolean
+  psMinPerTeam: number
+  psMaxPerTeam: number
+  apMinPerTeam: number
+  apMaxPerTeam: number
+  ssMinPerTeam: number
+  ssMaxPerTeam: number
+  internMinPerTeam: number
+  internMaxPerTeam: number
   teamsWithoutYy: number
   yyMinimumCoverageMet: boolean
   teams: FpYyTeamCount[]
@@ -54,6 +94,11 @@ export interface FpYyBalanceReport {
 }
 
 export interface AssignResponse {
+  teams: LineTeam[]
+  fpYyBalance?: FpYyBalanceReport
+}
+
+export interface MoveMemberResponse {
   teams: LineTeam[]
   fpYyBalance?: FpYyBalanceReport
 }

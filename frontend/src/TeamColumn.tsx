@@ -1,7 +1,9 @@
 import { memo } from 'react'
+import { useDroppable } from '@dnd-kit/core'
 import type { CrewMember, LineTeam } from './types'
 import { MemberCard } from './MemberCard'
 import { DropSlot } from './DropSlot'
+import { formatTeamBalanceIssue, type TeamBalanceIssue } from './teamBalanceFlags'
 
 function isTP(m: CrewMember) {
   return m.positionCode?.includes('TP') || m.grade?.includes('TP')
@@ -13,6 +15,12 @@ function isTS(m: CrewMember) {
 interface TeamColumnProps {
   team: LineTeam
   otherTeams: LineTeam[]
+  /** 사전 배정: 빈 팀 카드 전체를 드롭 영역으로 사용 */
+  preAssignMode?: boolean
+  isDropHighlighted?: boolean
+  tpSwapTarget?: boolean
+  /** 균등 분배 검증에서 이탈한 항목 */
+  balanceIssues?: TeamBalanceIssue[]
   onMoveMember: (
     employeeId: string,
     fromTeamId: string,
@@ -27,18 +35,58 @@ interface TeamColumnProps {
   ) => void
 }
 
-function TeamColumnInner({ team, otherTeams, onOpenMoveMenu }: TeamColumnProps) {
+function TeamColumnInner({
+  team,
+  otherTeams,
+  onOpenMoveMenu,
+  preAssignMode,
+  isDropHighlighted,
+  tpSwapTarget,
+  balanceIssues,
+}: TeamColumnProps) {
+  const isEmpty = team.members.length === 0
+  const hasBalanceIssues = Boolean(balanceIssues?.length)
+  const teamDropEnabled = Boolean(preAssignMode)
+  const { setNodeRef: setTeamDropRef, isOver: isTeamOver } = useDroppable({
+    id: team.teamId,
+  })
+  const showDropTarget = isTeamOver || Boolean(isDropHighlighted)
+
   const tpMembers = team.members.filter(isTP)
   const tsMembers = team.members.filter(isTS)
   const restMembers = team.members.filter((m) => !isTP(m) && !isTS(m))
 
   return (
-    <div className="team-column card team-card">
+    <div
+      ref={setTeamDropRef}
+      className={`team-column card team-card${showDropTarget ? ' drop-target' : ''}${tpSwapTarget ? ' tp-swap-target' : ''}${hasBalanceIssues ? ' team-column--balance-warn' : ''}${teamDropEnabled && isEmpty ? ' team-column-empty-preassign' : ''}${!teamDropEnabled ? ' team-column-droppable' : ''}`}
+    >
       <div className="team-header">
         <span className="team-id">{team.teamId}</span>
         <span className="team-count">{team.members.length}명</span>
       </div>
-      <div className="member-list">
+      {hasBalanceIssues && (
+        <div className="team-balance-flags" role="note">
+          {balanceIssues!.map((issue: TeamBalanceIssue) => (
+            <span
+              key={`${issue.key}-${issue.kind}`}
+              className={`team-balance-flag team-balance-flag--${issue.kind}`}
+              title={`${issue.label} 팀당 기준 ${issue.min}~${issue.max}명`}
+            >
+              {formatTeamBalanceIssue(issue)}
+            </span>
+          ))}
+        </div>
+      )}
+      <div
+        className={`member-list${teamDropEnabled && isEmpty ? ' member-list-empty-drop' : ''}${teamDropEnabled && !isEmpty ? ' member-list-pre-assign' : ''}`}
+      >
+        {teamDropEnabled && isEmpty && (
+          <p className="empty-team-drop-hint">TP/TS를 여기에 놓으세요</p>
+        )}
+        {tpSwapTarget && (
+          <p className="tp-swap-hint">TP 교체</p>
+        )}
         {tpMembers.length > 0 && (
           <div className="member-group">
             <div className="member-group-label">팀장</div>
@@ -93,7 +141,12 @@ function TeamColumnInner({ team, otherTeams, onOpenMoveMenu }: TeamColumnProps) 
             ))}
           </div>
         )}
-        <DropSlot teamId={team.teamId} index={team.members.length} />
+        {!teamDropEnabled && (
+          <DropSlot teamId={team.teamId} index={team.members.length} trailing />
+        )}
+        {teamDropEnabled && !isEmpty && (
+          <DropSlot teamId={team.teamId} index={team.members.length} trailing />
+        )}
       </div>
     </div>
   )

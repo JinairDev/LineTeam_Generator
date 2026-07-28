@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import {
   DndContext,
@@ -7,16 +7,19 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  pointerWithin,
 } from '@dnd-kit/core'
-import type { Active } from '@dnd-kit/core'
-import type { CrewMember, LineTeam } from './types'
+import type { Active, Over } from '@dnd-kit/core'
+import type { CrewMember, FpYyBalanceReport, LineTeam } from './types'
 import { TeamColumn } from './TeamColumn'
 import { MemberCardPreview } from './MemberCardPreview'
-import { centerUnderCursor } from './dndModifiers'
+import { boardCollisionDetection, resolveBoardDropTarget } from './dndCollision'
+import { getTeamMoveDropHint } from './teamMove'
+import { isTP } from './rankToken'
+import { buildTeamBalanceIssueMap } from './teamBalanceFlags'
 
 interface TeamBoardProps {
   teams: LineTeam[]
+  balanceReport?: FpYyBalanceReport | null
   onMoveMember: (
     employeeId: string,
     fromTeamId: string,
@@ -33,10 +36,17 @@ type MoveContextMenu = {
   otherTeams: LineTeam[]
 }
 
-export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
+export function TeamBoard({ teams, balanceReport, onMoveMember }: TeamBoardProps) {
+  const teamIssueMap = useMemo(
+    () => buildTeamBalanceIssueMap(balanceReport ?? null),
+    [balanceReport]
+  )
   const [moveMenu, setMoveMenu] = useState<MoveContextMenu | null>(null)
   const [draggingActive, setDraggingActive] = useState<Active | null>(null)
+  const [draggingMember, setDraggingMember] = useState<CrewMember | null>(null)
+  const [overTeamId, setOverTeamId] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const lastOverRef = useRef<Over | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -71,24 +81,39 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
     return () => document.removeEventListener('mousedown', close)
   }, [moveMenu])
 
+  const handleDragOver = (over: Over | null) => {
+    lastOverRef.current = over
+    if (!over) {
+      setOverTeamId(null)
+      return
+    }
+    const id = String(over.id)
+    if (id.includes('::')) {
+      setOverTeamId(id.split('::')[0])
+      return
+    }
+    setOverTeamId(id)
+  }
+
   const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
+    const { active } = event
+    const over = event.over ?? lastOverRef.current
+    lastOverRef.current = null
+    setOverTeamId(null)
     if (!over) return
     const payload = active.data.current as { member: CrewMember; teamId: string } | undefined
     if (!payload) return
-    const overStr = String(over.id)
-    let toTeamId: string
-    let toIndex: number | undefined
-    if (overStr.includes('::')) {
-      const [teamId, indexStr] = overStr.split('::')
-      toTeamId = teamId
-      const n = parseInt(indexStr, 10)
-      if (!Number.isNaN(n)) toIndex = n
-    } else {
-      toTeamId = overStr
-      toIndex = undefined
-    }
-    onMoveMember(payload.member.employeeId, payload.teamId, toTeamId, toIndex)
+    const { toTeamId, toIndex } = resolveBoardDropTarget(String(over.id))
+    const isTpSwap =
+      isTP(payload.member) &&
+      getTeamMoveDropHint(teams, payload.member, toTeamId) === 'swap'
+    if (payload.teamId === toTeamId && toIndex === undefined && !isTpSwap) return
+    onMoveMember(
+      payload.member.employeeId,
+      payload.teamId,
+      toTeamId,
+      isTpSwap ? undefined : toIndex
+    )
   }
 
   const overlayContent = (active: Active | null): React.ReactNode => {
@@ -97,26 +122,57 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
     return <MemberCardPreview member={payload.member} />
   }
 
+  const menuMember = moveMenu
+    ? teams.flatMap((t) => t.members).find((m) => m.employeeId === moveMenu.employeeId)
+    : null
+
   return (
     <DndContext
       sensors={sensors}
-      onDragStart={({ active }) => setDraggingActive(active)}
+      autoScroll
+      collisionDetection={boardCollisionDetection}
+      onDragStart={({ active }) => {
+        setDraggingActive(active)
+        setDraggingMember(
+          (active.data.current as { member: CrewMember } | undefined)?.member ?? null
+        )
+        lastOverRef.current = null
+      }}
+      onDragOver={({ over }) => handleDragOver(over)}
+      onDragCancel={() => {
+        setDraggingActive(null)
+        setDraggingMember(null)
+        lastOverRef.current = null
+        setOverTeamId(null)
+      }}
       onDragEnd={(e) => {
         setDraggingActive(null)
+        setDraggingMember(null)
         handleDragEnd(e)
       }}
-      collisionDetection={pointerWithin}
     >
       <div className="team-board">
-        {teams.map((team) => (
-          <TeamColumn
-            key={team.teamId}
-            team={team}
-            otherTeams={teams.filter((t) => t.teamId !== team.teamId)}
-            onMoveMember={onMoveMember}
-            onOpenMoveMenu={openMoveMenu}
-          />
-        ))}
+        {teamIssueMap.size > 0 && (
+          <p className="team-board-balance-legend">
+            주황 테두리 팀 — 균등 분배 편차 원인 (많음/적음/미배치)
+          </p>
+        )}
+        {teams.map((team) => {
+          const dropHint = getTeamMoveDropHint(teams, draggingMember, overTeamId)
+          const isHighlighted = overTeamId === team.teamId
+          return (
+            <TeamColumn
+              key={team.teamId}
+              team={team}
+              otherTeams={teams.filter((t) => t.teamId !== team.teamId)}
+              onMoveMember={onMoveMember}
+              onOpenMoveMenu={openMoveMenu}
+              isDropHighlighted={isHighlighted}
+              tpSwapTarget={isHighlighted && dropHint === 'swap'}
+              balanceIssues={teamIssueMap.get(team.teamId)}
+            />
+          )
+        })}
       </div>
       {moveMenu && createPortal(
         <div
@@ -125,28 +181,30 @@ export function TeamBoard({ teams, onMoveMember }: TeamBoardProps) {
           style={{ left: moveMenu.clientX, top: moveMenu.clientY }}
         >
           <div className="member-move-dropdown-title">다른 팀으로 이동</div>
-          {moveMenu.otherTeams.map((t) => (
-            <button
-              key={t.teamId}
-              type="button"
-              className="member-move-dropdown-item"
-              onClick={() => {
-                onMoveMember(moveMenu.employeeId, moveMenu.fromTeamId, t.teamId)
-                setMoveMenu(null)
-              }}
-            >
-              {t.teamId} <span className="member-move-dropdown-count">({t.members.length}명)</span>
-            </button>
-          ))}
+          {moveMenu.otherTeams.map((t) => {
+            const swap = menuMember && isTP(menuMember) && t.members.some(isTP)
+            return (
+              <button
+                key={t.teamId}
+                type="button"
+                className="member-move-dropdown-item"
+                onClick={() => {
+                  onMoveMember(moveMenu.employeeId, moveMenu.fromTeamId, t.teamId)
+                  setMoveMenu(null)
+                }}
+              >
+                {t.teamId}
+                {swap ? ' (TP 교체)' : ''}
+                {' '}
+                <span className="member-move-dropdown-count">({t.members.length}명)</span>
+              </button>
+            )
+          })}
         </div>,
         document.body
       )}
       {createPortal(
-        <DragOverlay
-          dropAnimation={null}
-          modifiers={[centerUnderCursor]}
-          zIndex={10000}
-        >
+        <DragOverlay dropAnimation={null} zIndex={10000}>
           {overlayContent(draggingActive)}
         </DragOverlay>,
         document.body

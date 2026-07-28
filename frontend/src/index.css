@@ -189,6 +189,58 @@ input[type="file"] {
   gap: 1rem;
 }
 
+.team-board-balance-legend {
+  grid-column: 1 / -1;
+  margin: 0 0 0.25rem;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+}
+
+.team-column.team-card.team-column--balance-warn {
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.35);
+  background: linear-gradient(180deg, #fff7ed 0%, var(--surface) 2.5rem);
+}
+
+.team-balance-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: -0.35rem 0 0.55rem;
+}
+
+.team-balance-flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.team-balance-flag--high {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.team-balance-flag--low {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+}
+
+.team-balance-flag--missing {
+  background: #fef3c7;
+  color: #a16207;
+  border: 1px solid #fcd34d;
+}
+
 .team-column {
   min-height: 200px;
   display: flex;
@@ -254,10 +306,23 @@ input[type="file"] {
 }
 
 .drop-slot {
-  min-height: 6px;
+  min-height: 8px;
   margin: 1px 0;
   border-radius: 4px;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, min-height 0.15s ease;
+}
+
+.drop-slot-trailing {
+  flex: 1;
+  min-height: 1.25rem;
+}
+
+.team-board .member-list {
+  min-height: 3rem;
+}
+
+.team-board .drop-slot-over {
+  min-height: 22px;
 }
 
 .drop-slot-over {

@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import com.crew.lineteam.util.GradeTokenUtil;
 import com.crew.lineteam.util.RankTokenUtil;
 
 import java.util.Map;
@@ -39,9 +40,14 @@ public class CrewMemberDto {
     public String getFromColumn() { return fromColumn; }
     public void setFromColumn(String fromColumn) { this.fromColumn = fromColumn; }
 
-    /** RANK 컬럼에서 추출한 토큰: TP, TS, FP, YY 중 하나 또는 null */
+    /** RANK 컬럼에서 추출한 토큰: TP, TS, TS OJT, FP, YY 중 하나 또는 null */
     public String getRankToken() {
         return RankTokenUtil.fromMember(this);
+    }
+
+    /** 직급 컬럼에서 추출한 토큰: PS, AP, SS, 인턴 중 하나 또는 null */
+    public String getGradeToken() {
+        return GradeTokenUtil.fromMember(this);
     }
 
     /** 팀장(TP) 여부 */
@@ -50,10 +56,15 @@ public class CrewMemberDto {
                 || containsTokenFallback(RankTokenUtil.TP);
     }
 
-    /** 선임(TS) 여부 */
+    /** 선임(TS) 여부 — TS OJT 포함 */
     public boolean isTS() {
         return RankTokenUtil.TS.equals(getRankToken())
+                || RankTokenUtil.TS_OJT.equals(getRankToken())
                 || containsTokenFallback(RankTokenUtil.TS);
+    }
+
+    public boolean isTsOjt() {
+        return RankTokenUtil.TS_OJT.equals(getRankToken());
     }
 
     public boolean isFP() {

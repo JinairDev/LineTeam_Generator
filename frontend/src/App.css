@@ -402,38 +402,6 @@
   margin-left: 0.2rem;
 }
 
-.fp-yy-balance {
-  margin-bottom: 1rem;
-  padding: 0.85rem 1rem;
-}
-
-.fp-yy-balance--ok {
-  border-left: 4px solid var(--success);
-  background: var(--success-bg);
-}
-
-.fp-yy-balance--warn {
-  border-left: 4px solid var(--warning);
-  background: #fef9c3;
-}
-
-.fp-yy-balance-summary {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.fp-yy-balance-bases {
-  margin: 0;
-  padding-left: 1.2rem;
-  font-size: 0.875rem;
-  color: var(--text-muted);
-}
-
-.fp-yy-balance-bases li + li {
-  margin-top: 0.25rem;
-}
-
 .team-count-form {
   display: flex;
   flex-direction: column;
@@ -481,4 +449,177 @@
 .team-count-unit {
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+.pre-assign-choice-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.95rem;
+}
+
+.pre-assign-choice-stats strong {
+  color: var(--accent);
+  margin-left: 0.2rem;
+}
+
+.pre-assign-choice-actions {
+  flex-wrap: wrap;
+}
+
+.pre-assign-desc {
+  margin-bottom: 1rem;
+}
+
+.pre-assign-remaining {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.pre-assign-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .pre-assign-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pre-assign-pool {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.pre-assign-pool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.pre-assign-pool-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.pre-assign-pool-count {
+  font-size: 0.9rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pre-assign-pool-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.pre-assign-pool-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 12rem;
+  padding: 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.pre-assign-pool-body-over {
+  border-color: var(--accent);
+  background: #eff6ff;
+}
+
+.pre-assign-pool-empty {
+  margin: 0;
+  padding: 1rem 0.5rem;
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--success);
+  font-weight: 500;
+}
+
+.pre-assign-pool-over {
+  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+}
+
+.pre-assign-team-board .team-column-empty-preassign {
+  min-height: 8rem;
+}
+
+.pre-assign-team-board .team-column.drop-target {
+  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+}
+
+.pre-assign-team-board .team-column.tp-swap-target,
+.team-board .team-column.tp-swap-target {
+  box-shadow: 0 0 0 2px var(--warning);
+  border-color: var(--warning);
+}
+
+.tp-swap-hint {
+  margin: 0 0 0.5rem;
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #a16207;
+  background: #fef9c3;
+  border-radius: 6px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.pre-assign-team-board .member-list {
+  min-height: 3rem;
+}
+
+.pre-assign-team-board .member-list-empty-drop {
+  flex: 1;
+  min-height: 5.5rem;
+  justify-content: center;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pre-assign-team-board .team-column.drop-target .member-list-empty-drop {
+  border-color: var(--accent);
+  background: rgba(15, 118, 110, 0.1);
+}
+
+.empty-team-drop-hint {
+  margin: 0;
+  padding: 1.25rem 0.5rem;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  pointer-events: none;
+  user-select: none;
+}
+
+.pre-assign-team-board .member-list-pre-assign {
+  flex: 1;
+  min-height: 4rem;
+}
+
+.pre-assign-team-board .member-list-pre-assign > .drop-slot:last-child {
+  flex: 1;
+  min-height: 1.5rem;
+}
+
+.pre-assign-team-board .drop-slot-over {
+  min-height: 24px;
 }

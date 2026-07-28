@@ -2,12 +2,16 @@ package com.crew.lineteam.controller;
 
 import com.crew.lineteam.dto.AssignRequest;
 import com.crew.lineteam.dto.AssignResponse;
+import com.crew.lineteam.dto.CreateTeamShellsRequest;
 import com.crew.lineteam.dto.CrewMemberDto;
 import com.crew.lineteam.dto.CrewUploadResponse;
 import com.crew.lineteam.dto.ExportTeamsRequest;
+import com.crew.lineteam.dto.FpYyBalanceReport;
 import com.crew.lineteam.dto.GoogleSpreadsheetImportRequest;
 import com.crew.lineteam.dto.LineTeamDto;
+import com.crew.lineteam.dto.MoveMemberResponse;
 import com.crew.lineteam.service.ExcelService;
+import com.crew.lineteam.service.FpYyBalanceService;
 import com.crew.lineteam.service.GoogleSpreadsheetImportService;
 import com.crew.lineteam.service.TeamAssignmentService;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +34,7 @@ public class CrewLineTeamController {
     private final ExcelService excelService;
     private final GoogleSpreadsheetImportService googleSpreadsheetImportService;
     private final TeamAssignmentService teamAssignmentService;
+    private final FpYyBalanceService fpYyBalanceService;
 
     /**
      * 1. 재직 현황 엑셀 업로드 → 파싱된 승무원 목록 반환
@@ -129,6 +134,24 @@ public class CrewLineTeamController {
     }
 
     /**
+     * 사전 TP/TS 배정용: 편성 규칙에 맞는 빈 팀 껍데기 목록 생성
+     */
+    @PostMapping("/teams/shells")
+    public ResponseEntity<List<LineTeamDto>> createTeamShells(@RequestBody CreateTeamShellsRequest request) {
+        if (request == null || request.getCrew() == null) {
+            throw new IllegalArgumentException("승무원 목록이 없습니다.");
+        }
+        if (request.getCrew().isEmpty()) {
+            throw new IllegalArgumentException("승무원 목록이 비어 있습니다.");
+        }
+        List<LineTeamDto> shells = teamAssignmentService.createTeamShells(request.getCrew());
+        if (shells.isEmpty()) {
+            throw new IllegalArgumentException("편성 대상 승무원이 없습니다. (차출·휴직 제외 후 인원 확인)");
+        }
+        return ResponseEntity.ok(shells);
+    }
+
+    /**
      * 2. 편성 실행: 승무원 목록과 선택적 지역별 팀 수를 받아 라인팀 목록 반환
      */
     @PostMapping("/assign")
@@ -161,10 +184,10 @@ public class CrewLineTeamController {
     }
 
     /**
-     * 3. 수동 이동: 특정 멤버를 다른 팀으로 이동
+     * 3. 수동 이동: 특정 멤버를 다른 팀으로 이동 (이동 후 균등 분배 검증 결과 포함)
      */
     @PatchMapping("/teams/move")
-    public ResponseEntity<List<LineTeamDto>> moveMember(
+    public ResponseEntity<MoveMemberResponse> moveMember(
             @RequestBody MoveMemberRequest request
     ) {
         List<LineTeamDto> teams = request.getTeams();
@@ -205,15 +228,61 @@ public class CrewLineTeamController {
             throw new IllegalArgumentException("이동할 팀을 찾을 수 없습니다: " + toTeamId);
         }
 
+        if (member.isTP() && !fromTeamId.equals(toTeamId)) {
+            LineTeamDto targetTeam = null;
+            for (LineTeamDto t : teams) {
+                if (t != null && toTeamId.equals(t.getTeamId())) {
+                    targetTeam = t;
+                    break;
+                }
+            }
+            if (targetTeam != null) {
+                CrewMemberDto existingTp = null;
+                int existingTpIndex = -1;
+                for (int i = 0; i < targetTeam.getMembers().size(); i++) {
+                    CrewMemberDto m = targetTeam.getMembers().get(i);
+                    if (m != null && m.isTP()) {
+                        existingTp = m;
+                        existingTpIndex = i;
+                        break;
+                    }
+                }
+                if (existingTp != null && !employeeId.equals(existingTp.getEmployeeId())) {
+                    targetTeam.getMembers().remove(existingTp);
+                    int slot = existingTpIndex >= 0 ? existingTpIndex : 0;
+                    if (slot > targetTeam.getMembers().size()) {
+                        slot = targetTeam.getMembers().size();
+                    }
+                    targetTeam.getMembers().add(slot, member);
+                    for (LineTeamDto fromT : teams) {
+                        if (fromT != null && fromTeamId.equals(fromT.getTeamId())) {
+                            fromT.getMembers().add(0, existingTp);
+                            break;
+                        }
+                    }
+                    return moveMemberResponse(teams);
+                }
+            }
+        }
+
         int insertIndex = (toIndex != null && toIndex >= 0)
                 ? toIndex
                 : -1; // -1 = append
+        if (member.isTP() && !fromTeamId.equals(toTeamId) && insertIndex < 0) {
+            insertIndex = 0;
+        }
         if (fromTeamId.equals(toTeamId) && fromIndex >= 0 && insertIndex > fromIndex) {
             insertIndex--;
         }
 
         for (LineTeamDto t : teams) {
             if (t.getTeamId().equals(toTeamId)) {
+                if (member.isTP()) {
+                    boolean hasOtherTp = t.getMembers().stream().anyMatch(CrewMemberDto::isTP);
+                    if (hasOtherTp) {
+                        throw new IllegalArgumentException("팀당 TP는 1명만 배정할 수 있습니다.");
+                    }
+                }
                 if (insertIndex >= 0 && insertIndex <= t.getMembers().size()) {
                     t.getMembers().add(insertIndex, member);
                 } else {
@@ -222,7 +291,25 @@ public class CrewLineTeamController {
                 break;
             }
         }
-        return ResponseEntity.ok(teams);
+        return moveMemberResponse(teams);
+    }
+
+    /**
+     * 편성·수동 이동 후 팀 구성의 균등 분배 검증만 수행
+     */
+    @PostMapping("/teams/balance-verify")
+    public ResponseEntity<FpYyBalanceReport> verifyTeamBalance(@RequestBody ExportTeamsRequest body) {
+        if (body == null || body.getTeams() == null || body.getTeams().isEmpty()) {
+            throw new IllegalArgumentException("검증할 팀 목록이 없습니다.");
+        }
+        return ResponseEntity.ok(fpYyBalanceService.verify(body.getTeams()));
+    }
+
+    private ResponseEntity<MoveMemberResponse> moveMemberResponse(List<LineTeamDto> teams) {
+        return ResponseEntity.ok(MoveMemberResponse.builder()
+                .teams(teams)
+                .fpYyBalance(fpYyBalanceService.verify(teams))
+                .build());
     }
 
     /**

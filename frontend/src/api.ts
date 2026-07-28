@@ -1,4 +1,4 @@
-import type { AssignResponse, CrewMember, LineTeam } from './types'
+import type { AssignResponse, CrewMember, FpYyBalanceReport, LineTeam, MoveMemberResponse } from './types'
 import { devGoogleCsvProxyUrl, parseGoogleSheetUrl } from './googleSheetExport'
 
 const API = '/api'
@@ -95,6 +95,20 @@ export interface TeamCountByBase {
 /** 재편성 시 TP/TS 고정 모드 */
 export type PinMode = 'TP_FIXED' | 'TS_FIXED' | 'BOTH_FIXED'
 
+export async function createTeamShells(crew: CrewMember[]): Promise<LineTeam[]> {
+  let res: Response
+  try {
+    res = await fetch(`${API}/teams/shells`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crew }),
+    })
+  } catch (e) {
+    throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.')
+  }
+  return handleResponse(res, '팀 생성 실패', () => res.json())
+}
+
 export async function assignTeams(
   crew: CrewMember[],
   teamCountByBase?: TeamCountByBase,
@@ -125,7 +139,7 @@ export async function moveMember(
   fromTeamId: string,
   toTeamId: string,
   toIndex?: number
-): Promise<LineTeam[]> {
+): Promise<MoveMemberResponse> {
   let res: Response
   try {
     res = await fetch(`${API}/teams/move`, {
@@ -143,6 +157,20 @@ export async function moveMember(
     throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.')
   }
   return handleResponse(res, '이동 실패', () => res.json())
+}
+
+export async function verifyTeamBalance(teams: LineTeam[]): Promise<FpYyBalanceReport> {
+  let res: Response
+  try {
+    res = await fetch(`${API}/teams/balance-verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teams }),
+    })
+  } catch (e) {
+    throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.')
+  }
+  return handleResponse(res, '균등 분배 검증 실패', () => res.json())
 }
 
 /** 엑셀 팀별 행 정렬 (백엔드 `sort` 쿼리와 동일) */
