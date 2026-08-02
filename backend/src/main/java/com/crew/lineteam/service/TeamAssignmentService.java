@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
  * - SEL / PUS 베이스는 라인 코드가 정해진 **고정 팀 수**만큼만 생성 (SEL 61, PUS 8), 전원을 그 팀들에만 배분
  * - 그 외 베이스는 TP 수 기준(최소 1팀)으로 팀 슬롯 생성
  * - 엑셀 「소속팀」이 채워진 인원은 해당 팀에 사전 배정한 뒤 나머지를 자동 편성
+ * - 엑셀 「(구)TM」이 가리키는 이전 팀에는 동일인을 TP로 다시 배정하지 않음
  * - TP/TS 자격 규칙: TP=LJ → TS는 LJ/BX/RS 가능, TP=BX/RS → TS는 LJ만
  * - TS 인원은 자격 규칙을 지키면서 팀별 TS 수가 균등하도록 배분(동률 팀은 무작위)
  * - TP·기타 인원은 팀별 인원이 최대한 맞도록 두되, 가장 적은 팀이 여럿이면 그중 무작위 배치(A101 순서 고정 없음)
@@ -197,6 +198,14 @@ public class TeamAssignmentService {
                         c.getEmployeeId(), teamId));
                 continue;
             }
+            // (구)TM = 이전 팀 → 그 팀의 TP로 재배정 금지 (자동 배치 단계에서 다른 팀으로)
+            if (c.isTP() && DepartmentTeamResolver.isBlockedAsTpForPreviousTm(c, teamId, base, idsInBase)) {
+                skipped++;
+                System.out.println(String.format(
+                        "[TeamAssignmentService] (구)TM 동일팀 TP 금지 스킵: %s → %s (이전=%s)",
+                        c.getEmployeeId(), teamId, DepartmentTeamResolver.inputLegacyTm(c)));
+                continue;
+            }
             team.getMembers().add(c);
             assignedIds.add(c.getEmployeeId());
             departmentPinnedIds.add(c.getEmployeeId());
@@ -335,10 +344,12 @@ public class TeamAssignmentService {
                 .collect(Collectors.toCollection(ArrayList::new));
         Collections.shuffle(tpPool);
 
+        Map<String, List<String>> teamIdsByBase = teamIdsByBase(teams);
+
         for (LineTeamDto team : teams) {
             boolean hasTp = team.getMembers().stream().anyMatch(CrewMemberDto::isTP);
             if (hasTp) continue;
-            CrewMemberDto pick = pickTpForBase(tpPool, team.getBase());
+            CrewMemberDto pick = pickTpForTeamAvoidingPreviousTm(tpPool, team, teamIdsByBase);
             if (pick != null) {
                 team.getMembers().add(0, pick);
                 assignedIds.add(pick.getEmployeeId());
@@ -354,9 +365,16 @@ public class TeamAssignmentService {
             if (baseTeams == null || baseTeams.isEmpty()) {
                 baseTeams = teams;
             }
-            LineTeamDto target = pickTeamForMember(baseTeams, tp);
+            List<LineTeamDto> allowed = filterTeamsAllowedForTp(baseTeams, tp, teamIdsByBase.getOrDefault(base, List.of()));
+            if (allowed.isEmpty()) {
+                System.err.println(String.format(
+                        "[TeamAssignmentService] 경고: (구)TM으로 배치 가능한 팀이 없어 예외 배치 — %s prev=%s",
+                        tp.getEmployeeId(), DepartmentTeamResolver.inputLegacyTm(tp)));
+                allowed = baseTeams;
+            }
+            LineTeamDto target = pickTeamForMember(allowed, tp);
             if (target == null) {
-                target = pickRandomTeamAmongMinLoadWithCapacity(baseTeams);
+                target = pickRandomTeamAmongMinLoadWithCapacity(allowed);
             }
             if (target == null) {
                 continue;
@@ -366,16 +384,70 @@ public class TeamAssignmentService {
         }
     }
 
-    private static CrewMemberDto pickTpForBase(List<CrewMemberDto> tpPool, String teamBase) {
-        String nb = normalizeBase(teamBase);
-        for (int i = 0; i < tpPool.size(); i++) {
-            CrewMemberDto c = tpPool.get(i);
-            if (normalizeBase(c.getBase()).equals(nb)) {
-                return tpPool.remove(i);
+    private static Map<String, List<String>> teamIdsByBase(List<LineTeamDto> teams) {
+        Map<String, List<String>> map = new HashMap<>();
+        if (teams == null) return map;
+        for (LineTeamDto t : teams) {
+            if (t == null || t.getTeamId() == null) continue;
+            map.computeIfAbsent(normalizeBase(t.getBase()), k -> new ArrayList<>()).add(t.getTeamId());
+        }
+        return map;
+    }
+
+    private static List<LineTeamDto> filterTeamsAllowedForTp(
+            List<LineTeamDto> teams,
+            CrewMemberDto tp,
+            List<String> teamIdsInBase) {
+        if (teams == null || teams.isEmpty() || tp == null) {
+            return List.of();
+        }
+        String base = normalizeBase(tp.getBase());
+        List<LineTeamDto> out = new ArrayList<>();
+        for (LineTeamDto t : teams) {
+            if (t == null) continue;
+            if (DepartmentTeamResolver.isBlockedAsTpForPreviousTm(tp, t.getTeamId(), base, teamIdsInBase)) {
+                continue;
+            }
+            out.add(t);
+        }
+        return out;
+    }
+
+    /**
+     * TP가 (구)TM 이전 팀에 배정되면 안 되는지 (수동 이동·검증용).
+     */
+    public static boolean isTpBlockedFromPreviousTm(
+            CrewMemberDto member,
+            String candidateTeamId,
+            List<LineTeamDto> teams) {
+        if (member == null || candidateTeamId == null || teams == null) {
+            return false;
+        }
+        String base = normalizeBase(member.getBase());
+        List<String> ids = new ArrayList<>();
+        for (LineTeamDto t : teams) {
+            if (t != null && t.getTeamId() != null && normalizeBase(t.getBase()).equals(base)) {
+                ids.add(t.getTeamId());
             }
         }
-        if (!tpPool.isEmpty()) {
-            return tpPool.remove(0);
+        return DepartmentTeamResolver.isBlockedAsTpForPreviousTm(member, candidateTeamId, base, ids);
+    }
+
+    /** 베이스 일치 + (구)TM 이전 팀이 아닌 TP를 우선 선택 */
+    private static CrewMemberDto pickTpForTeamAvoidingPreviousTm(
+            List<CrewMemberDto> tpPool,
+            LineTeamDto team,
+            Map<String, List<String>> teamIdsByBase) {
+        if (tpPool == null || tpPool.isEmpty() || team == null) {
+            return null;
+        }
+        String nb = normalizeBase(team.getBase());
+        List<String> ids = teamIdsByBase.getOrDefault(nb, List.of());
+        for (int i = 0; i < tpPool.size(); i++) {
+            CrewMemberDto c = tpPool.get(i);
+            if (!normalizeBase(c.getBase()).equals(nb)) continue;
+            if (DepartmentTeamResolver.isBlockedAsTpForPreviousTm(c, team.getTeamId(), nb, ids)) continue;
+            return tpPool.remove(i);
         }
         return null;
     }

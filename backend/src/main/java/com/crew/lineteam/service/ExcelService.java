@@ -511,18 +511,7 @@ public class ExcelService {
 
     /** (구)TM / 구(TM) 등 레거시 TM 열 */
     private static boolean isLegacyTmColumn(String header) {
-        if (header == null || header.isBlank()) {
-            return false;
-        }
-        String t = header.replace(" ", "").trim();
-        if ("구(TM)".equalsIgnoreCase(t)) {
-            return true;
-        }
-        if ("(구)TM".equalsIgnoreCase(t)) {
-            return true;
-        }
-        String u = t.toUpperCase(Locale.ROOT);
-        return u.contains("구") && u.contains("TM");
+        return com.crew.lineteam.util.DepartmentTeamResolver.isLegacyTmHeader(header);
     }
 
     private static String fallbackExportValue(LineTeamDto team, CrewMemberDto m, String header) {

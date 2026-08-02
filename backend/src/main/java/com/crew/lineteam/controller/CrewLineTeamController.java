@@ -226,7 +226,17 @@ public class CrewLineTeamController {
         }
         boolean toTeamExists = teams.stream().anyMatch(t -> t != null && t.getTeamId() != null && t.getTeamId().equals(toTeamId));
         if (!toTeamExists) {
+            // 이미 from에서 제거된 상태이므로 복구
+            restoreMemberToTeam(teams, fromTeamId, member, fromIndex);
             throw new IllegalArgumentException("이동할 팀을 찾을 수 없습니다: " + toTeamId);
+        }
+
+        if (member.isTP()
+                && !fromTeamId.equals(toTeamId)
+                && TeamAssignmentService.isTpBlockedFromPreviousTm(member, toTeamId, teams)) {
+            restoreMemberToTeam(teams, fromTeamId, member, fromIndex);
+            throw new IllegalArgumentException(
+                    "(구)TM 이전 팀에는 동일 인원을 TP로 배정할 수 없습니다: " + toTeamId);
         }
 
         if (member.isTP() && !fromTeamId.equals(toTeamId)) {
@@ -311,6 +321,21 @@ public class CrewLineTeamController {
                 .teams(teams)
                 .fpYyBalance(fpYyBalanceService.verify(teams))
                 .build());
+    }
+
+    private static void restoreMemberToTeam(
+            List<LineTeamDto> teams,
+            String fromTeamId,
+            CrewMemberDto member,
+            int fromIndex) {
+        for (LineTeamDto t : teams) {
+            if (t == null || t.getTeamId() == null || !t.getTeamId().equals(fromTeamId)) continue;
+            int slot = fromIndex >= 0 && fromIndex <= t.getMembers().size()
+                    ? fromIndex
+                    : t.getMembers().size();
+            t.getMembers().add(slot, member);
+            return;
+        }
     }
 
     /**

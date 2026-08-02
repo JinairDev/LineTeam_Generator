@@ -4,11 +4,12 @@ import com.crew.lineteam.dto.CrewMemberDto;
 
 import java.util.Collection;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 엑셀 「소속팀」({@link CrewMemberDto#getDepartment()}) 값을 라인팀 ID로 해석합니다.
+ * 엑셀 「소속팀」({@link CrewMemberDto#getDepartment()}) · 「(구)TM」 값을 라인팀 ID로 해석합니다.
  * 내보내기 형식({@code 101TP}, {@code 101DP} 등)과 {@code A101}/{@code B101} 직접 표기를 지원합니다.
  */
 public final class DepartmentTeamResolver {
@@ -35,6 +36,60 @@ public final class DepartmentTeamResolver {
 
     public static boolean hasPrefillDepartment(CrewMemberDto m) {
         return inputDepartment(m) != null;
+    }
+
+    /**
+     * 엑셀 「(구)TM」 / 「구(TM)」 원문. 이전 소속 팀 표기(예: {@code 101TP}).
+     */
+    public static String inputLegacyTm(CrewMemberDto m) {
+        if (m == null || m.getImportColumns() == null || m.getImportColumns().isEmpty()) {
+            return null;
+        }
+        for (Map.Entry<String, String> e : m.getImportColumns().entrySet()) {
+            if (!isLegacyTmHeader(e.getKey())) continue;
+            String v = e.getValue();
+            if (v != null && !v.isBlank()) {
+                return v.trim();
+            }
+        }
+        return null;
+    }
+
+    public static boolean isLegacyTmHeader(String header) {
+        if (header == null || header.isBlank()) {
+            return false;
+        }
+        String t = header.replace(" ", "").trim();
+        if ("구(TM)".equalsIgnoreCase(t) || "(구)TM".equalsIgnoreCase(t)) {
+            return true;
+        }
+        String u = t.toUpperCase(Locale.ROOT);
+        return u.contains("구") && u.contains("TM");
+    }
+
+    /**
+     * (구)TM이 가리키는 이전 팀 ID. 해석 실패 시 null.
+     */
+    public static String resolvePreviousTeamId(
+            CrewMemberDto m,
+            String normalizedBase,
+            Collection<String> teamIdsInBase) {
+        return resolveTeamId(inputLegacyTm(m), normalizedBase, teamIdsInBase);
+    }
+
+    /**
+     * TP가 (구)TM으로 확인된 이전 팀에 다시 TP로 들어가면 안 될 때 true.
+     */
+    public static boolean isBlockedAsTpForPreviousTm(
+            CrewMemberDto m,
+            String candidateTeamId,
+            String normalizedBase,
+            Collection<String> teamIdsInBase) {
+        if (m == null || !m.isTP() || candidateTeamId == null || candidateTeamId.isBlank()) {
+            return false;
+        }
+        String prev = resolvePreviousTeamId(m, normalizedBase, teamIdsInBase);
+        return prev != null && prev.equalsIgnoreCase(candidateTeamId.trim());
     }
 
     /**
