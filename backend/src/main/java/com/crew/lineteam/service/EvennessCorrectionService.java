@@ -19,12 +19,15 @@ import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
 /**
- * 1차 우선순위(RANK → 직급 → FROM) 편성 후,
+ * 1차 우선순위(FROM → RANK → 직급) 편성 후,
  * 팀당 편차가 {@link FpYyBalanceService#MAX_ALLOWED_SPREAD}를 넘는 항목을
- * 팀 간 스왑/이동으로 줄입니다. 1차 규칙을 일부 깨더라도 균등을 우선합니다.
+ * 팀 간 스왑/이동으로 줄입니다.
  * <p>
- * 하드 제약 유지: 같은 베이스만, TP는 이동하지 않음, TS는 대상 팀 TP 자격 규칙을 만족할 때만.
- * 엑셀 소속팀으로 사전 배정된 인원({@code fixedEmployeeIds})도 이동·스왑하지 않습니다.
+ * FROM(LJ/BX/RS)은 1차 배치 결과를 <b>불변</b>으로 둡니다 — FROM 보정 없음, FROM 인원은 이동·스왑 제외.
+ * 보정 순서: 직급 → RANK (FROM은 건드리지 않음).
+ * <p>
+ * 하드 제약: 같은 베이스만, TP는 이동하지 않음, TS는 대상 팀 TP 자격 규칙을 만족할 때만.
+ * 엑셀 소속팀/GRP 사전 배정 인원({@code fixedEmployeeIds})도 이동·스왑하지 않습니다.
  */
 @Service
 public class EvennessCorrectionService {
@@ -58,14 +61,7 @@ public class EvennessCorrectionService {
         }
         for (int pass = 0; pass < MAX_PASSES_PER_BASE; pass++) {
             boolean improved = false;
-            // FROM → 직급 → RANK 순으로 큰 격차부터 맞춤 (사용자 요청: 1·2·3순위 후 보정)
-            improved |= correctMetric(teams, fixedEmployeeIds, m -> LineQualificationUtil.LJ.equals(m.getLineQualification()),
-                    t -> LineQualificationUtil.countInTeam(t, LineQualificationUtil.LJ));
-            improved |= correctMetric(teams, fixedEmployeeIds, m -> LineQualificationUtil.BX.equals(m.getLineQualification()),
-                    t -> LineQualificationUtil.countInTeam(t, LineQualificationUtil.BX));
-            improved |= correctMetric(teams, fixedEmployeeIds, m -> LineQualificationUtil.RS.equals(m.getLineQualification()),
-                    t -> LineQualificationUtil.countInTeam(t, LineQualificationUtil.RS));
-
+            // FROM은 1차 배치 불변 — 직급 → RANK 순으로만 보정
             improved |= correctMetric(teams, fixedEmployeeIds, m -> GradeTokenUtil.PS.equals(m.getGradeToken()),
                     t -> GradeTokenUtil.countInTeam(t, GradeTokenUtil.PS));
             improved |= correctMetric(teams, fixedEmployeeIds, m -> GradeTokenUtil.AP.equals(m.getGradeToken()),
@@ -75,7 +71,6 @@ public class EvennessCorrectionService {
             improved |= correctMetric(teams, fixedEmployeeIds, m -> GradeTokenUtil.INTERN.equals(m.getGradeToken()),
                     t -> GradeTokenUtil.countInTeam(t, GradeTokenUtil.INTERN));
 
-            // 보정으로 FP·YY·TS OJT가 깨졌으면 다시 맞춤
             improved |= correctMetric(teams, fixedEmployeeIds, m -> RankTokenUtil.isToken(m, RankTokenUtil.FP),
                     t -> countRank(t, RankTokenUtil.FP));
             improved |= correctMetric(teams, fixedEmployeeIds, m -> RankTokenUtil.isToken(m, RankTokenUtil.YY),
@@ -165,6 +160,7 @@ public class EvennessCorrectionService {
         List<CrewMemberDto> out = new ArrayList<>();
         for (CrewMemberDto m : team.getMembers()) {
             if (m == null || m.isTP() || isFixed(m, fixedEmployeeIds)) continue;
+            if (LineQualificationUtil.isFromDistributionMember(m)) continue;
             if (hasToken.test(m)) out.add(m);
         }
         // 일반 팀원 우선, TS는 나중 (자격 제약 때문에)
@@ -177,6 +173,7 @@ public class EvennessCorrectionService {
         List<CrewMemberDto> out = new ArrayList<>();
         for (CrewMemberDto m : team.getMembers()) {
             if (m == null || m.isTP() || isFixed(m, fixedEmployeeIds)) continue;
+            if (LineQualificationUtil.isFromDistributionMember(m)) continue;
             if (!hasToken.test(m)) out.add(m);
         }
         out.sort(Comparator.comparingInt((CrewMemberDto m) -> m.isTS() ? 1 : 0));

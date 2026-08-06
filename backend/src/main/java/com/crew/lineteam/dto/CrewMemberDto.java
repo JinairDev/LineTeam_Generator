@@ -33,6 +33,10 @@ public class CrewMemberDto {
     private String fromColumn;  // FROM 칼럼: LJ, RS, BX 중 하나 (필드명 from은 Lombok 빌더와 충돌 가능해 fromColumn 사용)
     private String annc;        // ANNC 칼럼 (표시용)
     private String qualification; // Qualification 칼럼 (심사관 등, 표시용)
+    /** 엑셀 GRP 칼럼: 1~5 그룹 (소속팀 미입력 시 해당 그룹 내 선배치) */
+    private String grp;
+    /** 엑셀 「이름」셀 배경색 (#RRGGBB). CSV 등 색 정보 없으면 null */
+    private String nameBgColor;
 
     /** 업로드 시트 헤더 문자열 → 해당 행 셀 값(엑셀 추출 시 입력과 동일 열·순서) */
     private Map<String, String> importColumns;

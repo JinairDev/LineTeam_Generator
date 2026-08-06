@@ -10,9 +10,13 @@ export interface CrewMember {
   line?: string
   status?: string
   department?: string
+  /** 엑셀 GRP: 1~5 그룹 (소속팀 없을 때 그룹 내 선배치) */
+  grp?: string
   fromColumn?: string    // FROM 컬럼 → LJ, BX, RS
   annc?: string          // ANNC 컬럼
   qualification?: string // Qualification(심사관 등) - 엑셀과 동일 이름
+  /** 엑셀 「이름」셀 배경색 (#RRGGBB). CSV 등에는 없음 */
+  nameBgColor?: string
   /** 업로드 시트 헤더 → 셀 값 (엑셀 추출 시 입력과 동일 순서) */
   importColumns?: Record<string, string>
 }

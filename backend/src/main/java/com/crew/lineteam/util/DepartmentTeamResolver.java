@@ -2,19 +2,29 @@ package com.crew.lineteam.util;
 
 import com.crew.lineteam.dto.CrewMemberDto;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 엑셀 「소속팀」({@link CrewMemberDto#getDepartment()}) · 「(구)TM」 값을 라인팀 ID로 해석합니다.
- * 내보내기 형식({@code 101TP}, {@code 101DP} 등)과 {@code A101}/{@code B101} 직접 표기를 지원합니다.
+ * 엑셀 「소속팀」·「GRP」·「(구)TM」 값을 라인팀/그룹으로 해석합니다.
+ * <ul>
+ *   <li>소속팀: {@code 101TP}, {@code A101} 등 → 특정 팀</li>
+ *   <li>GRP: {@code 1}~{@code 5} → SEL A1xx~A5xx 그룹 내 임의 팀</li>
+ * </ul>
  */
 public final class DepartmentTeamResolver {
 
     private static final Pattern TEAM_NUMBER = Pattern.compile("(\\d+)");
+    /** GRP 값: 1, 2, 1그룹, 그룹3 */
+    private static final Pattern GROUP_ONLY = Pattern.compile(
+            "^(?:([1-5])(?:그룹)?|그룹([1-5]))$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern TEAM_ID_NUMBER = Pattern.compile("^[AB](\\d+)$", Pattern.CASE_INSENSITIVE);
 
     private DepartmentTeamResolver() {}
 
@@ -34,8 +44,34 @@ public final class DepartmentTeamResolver {
         return null;
     }
 
+    /** RAW GRP 문자열 (grp 필드, 없으면 importColumns의 GRP/그룹). 비어 있으면 null. */
+    public static String inputGrp(CrewMemberDto m) {
+        if (m == null) return null;
+        String g = m.getGrp();
+        if (g != null && !g.isBlank()) {
+            return g.trim();
+        }
+        if (m.getImportColumns() != null) {
+            for (String key : List.of("GRP", "Grp", "그룹")) {
+                String fromImport = m.getImportColumns().get(key);
+                if (fromImport != null && !fromImport.isBlank()) {
+                    return fromImport.trim();
+                }
+            }
+            for (Map.Entry<String, String> e : m.getImportColumns().entrySet()) {
+                if (e.getKey() == null || e.getValue() == null || e.getValue().isBlank()) continue;
+                String h = e.getKey().replace(" ", "").trim();
+                if ("GRP".equalsIgnoreCase(h) || "그룹".equals(h)) {
+                    return e.getValue().trim();
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 소속팀 또는 GRP가 있어 사전 배정 대상이면 true. */
     public static boolean hasPrefillDepartment(CrewMemberDto m) {
-        return inputDepartment(m) != null;
+        return inputDepartment(m) != null || inputGrp(m) != null;
     }
 
     /**
@@ -90,6 +126,60 @@ public final class DepartmentTeamResolver {
         }
         String prev = resolvePreviousTeamId(m, normalizedBase, teamIdsInBase);
         return prev != null && prev.equalsIgnoreCase(candidateTeamId.trim());
+    }
+
+    /**
+     * GRP 컬럼 값 → 그룹 번호 1~5. 해석 실패 시 null.
+     */
+    public static Integer resolveGroupNumber(String grpRaw) {
+        if (grpRaw == null || grpRaw.isBlank()) {
+            return null;
+        }
+        String d = grpRaw.trim().replace(" ", "");
+        // 엑셀 숫자 "1.0" 등
+        if (d.matches("^[1-5](?:\\.0+)?$")) {
+            return Integer.parseInt(d.substring(0, 1));
+        }
+        Matcher m = GROUP_ONLY.matcher(d);
+        if (!m.matches()) {
+            return null;
+        }
+        String g = m.group(1) != null ? m.group(1) : m.group(2);
+        if (g == null || g.isBlank()) {
+            return null;
+        }
+        return Integer.parseInt(g);
+    }
+
+    /** 팀 ID의 그룹 번호(백의 자리). {@code A201}→2, {@code B108}→1. 해석 실패 시 null. */
+    public static Integer groupOfTeamId(String teamId) {
+        if (teamId == null || teamId.isBlank()) {
+            return null;
+        }
+        Matcher m = TEAM_ID_NUMBER.matcher(teamId.trim());
+        if (!m.matches()) {
+            return null;
+        }
+        int n = Integer.parseInt(m.group(1));
+        if (n < 100) {
+            return null;
+        }
+        return n / 100;
+    }
+
+    /** 해당 베이스 팀 ID 중 지정 그룹에 속하는 것만 (순서 유지). */
+    public static List<String> filterTeamIdsByGroup(Collection<String> teamIdsInBase, int group) {
+        List<String> out = new ArrayList<>();
+        if (teamIdsInBase == null || group < 1 || group > 5) {
+            return out;
+        }
+        for (String id : teamIdsInBase) {
+            Integer g = groupOfTeamId(id);
+            if (g != null && g == group) {
+                out.add(id);
+            }
+        }
+        return out;
     }
 
     /**

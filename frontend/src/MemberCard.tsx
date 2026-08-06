@@ -3,6 +3,7 @@ import { useDraggable } from '@dnd-kit/core'
 import type { CrewMember, LineTeam } from './types'
 import { memberHasLeaveStyleStatus, memberStatusBadgeText } from './memberStatusUi'
 import { MemberMetaBadges, FromBadge } from './memberMetaBadges'
+import { nameBgStyle } from './nameBgColor'
 
 interface MemberCardProps {
   member: CrewMember
@@ -53,7 +54,9 @@ function MemberCardInner({
               {member.employeeId} · {member.gender || '-'} · {member.grade || '-'}
             </span>
           </div>
-          <div className="member-name">{member.name || '-'}</div>
+          <div className="member-name" style={nameBgStyle(member.nameBgColor)}>
+            {member.name || '-'}
+          </div>
           <MemberMetaBadges member={member} />
         </div>
       </div>

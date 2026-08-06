@@ -21,14 +21,15 @@ import java.util.stream.Collectors;
  * 라인팀 편성 알고리즘
  * - SEL / PUS 베이스는 라인 코드가 정해진 **고정 팀 수**만큼만 생성 (SEL 61, PUS 8), 전원을 그 팀들에만 배분
  * - 그 외 베이스는 TP 수 기준(최소 1팀)으로 팀 슬롯 생성
- * - 엑셀 「소속팀」이 채워진 인원은 해당 팀에 사전 배정한 뒤 나머지를 자동 편성
+ * - 엑셀 「소속팀」또는 「GRP」가 채워진 인원만 해당 팀/그룹에 사전 배정한 뒤 나머지를 자동 편성
  * - 엑셀 「(구)TM」이 가리키는 이전 팀에는 동일인을 TP로 다시 배정하지 않음
  * - TP/TS 자격 규칙: TP=LJ → TS는 LJ/BX/RS 가능, TP=BX/RS → TS는 LJ만
  * - TS 인원은 자격 규칙을 지키면서 팀별 TS 수가 균등하도록 배분(동률 팀은 무작위)
  * - TP·기타 인원은 팀별 인원이 최대한 맞도록 두되, 가장 적은 팀이 여럿이면 그중 무작위 배치(A101 순서 고정 없음)
  * - SEL·PUS 고정 팀은 인원 상한 없이 전원 배분(그 외 베이스는 팀당 최대 15명 목표)
  * - RANK FP·YY·TS OJT, FROM LJ·BX·RS, 직급 PS·AP·SS·인턴은 팀별 해당 인원 수 최소 팀에 우선 배치
- * - 1차 편성 후 편차(최대−최소)가 허용치(2명)를 넘는 항목은 팀 간 스왑/이동으로 추가 균등 보정
+ *   (한 명 배치 시: FROM → RANK → 직급 → 팀 총원)
+ * - 1차 편성 후 편차(최대−최소)가 허용치(2명)를 넘는 항목은 직급·RANK만 팀 간 스왑/이동으로 보정 (FROM은 1차 결과 불변)
  * - RANK YY는 같은 베이스 내 YY가 남는 한 모든 팀에 최소 1명 배치 (YY 부족 시 일부 팀은 0명)
  */
 @Service
@@ -55,7 +56,7 @@ public class TeamAssignmentService {
     }
 
     /**
-     * 사전 TP/TS 배정용 팀 껍데기 생성. 엑셀 소속팀이 있는 인원은 해당 팀에 미리 넣습니다.
+     * 사전 TP/TS 배정용 팀 껍데기 생성. 소속팀/GRP가 있는 인원은 미리 넣습니다.
      */
     public TeamShellsResponse createTeamShells(List<CrewMemberDto> allCrew) {
         List<CrewMemberDto> crew = assignableCrewOnly(allCrew);
@@ -148,8 +149,8 @@ public class TeamAssignmentService {
     }
 
     /**
-     * 엑셀 「소속팀」이 있는 인원을 해당 팀 ID에 미리 넣습니다.
-     * 팀당 TP는 1명만 허용(이미 TP가 있으면 추가 TP는 스킵).
+     * 소속팀(특정 팀) → 없으면 GRP(그룹) 순으로 사전 배정.
+     * 둘 다 비어 있으면 시드하지 않음(이후 자동 배정). 팀당 TP 1명.
      */
     private static SeedResult seedMembersFromDepartment(
             List<LineTeamDto> teams,
@@ -174,31 +175,27 @@ public class TeamAssignmentService {
             if (c == null || c.getEmployeeId() == null) continue;
             if (assignedIds.contains(c.getEmployeeId())) continue;
             String dept = DepartmentTeamResolver.inputDepartment(c);
-            if (dept == null) continue;
+            String grp = DepartmentTeamResolver.inputGrp(c);
+            if (dept == null && grp == null) continue;
 
             String base = normalizeBase(c.getBase());
             List<String> idsInBase = teamIdsByBase.getOrDefault(base, List.of());
-            String teamId = DepartmentTeamResolver.resolveTeamId(dept, base, idsInBase);
-            if (teamId == null) {
-                skipped++;
-                System.out.println(String.format(
-                        "[TeamAssignmentService] 소속팀 미매칭 스킵: %s (%s) dept=%s base=%s",
-                        c.getEmployeeId(), c.getName(), dept, base));
-                continue;
-            }
-            LineTeamDto team = byTeamId.get(teamId);
+            LineTeamDto team = resolveSeedTeam(c, dept, grp, base, idsInBase, byTeamId);
             if (team == null) {
                 skipped++;
+                System.out.println(String.format(
+                        "[TeamAssignmentService] 소속팀/GRP 미매칭 스킵: %s (%s) dept=%s grp=%s base=%s",
+                        c.getEmployeeId(), c.getName(), dept, grp, base));
                 continue;
             }
+            String teamId = team.getTeamId();
             if (c.isTP() && team.getMembers().stream().anyMatch(CrewMemberDto::isTP)) {
                 skipped++;
                 System.out.println(String.format(
-                        "[TeamAssignmentService] 소속팀 TP 충돌 스킵: %s → %s (이미 TP 있음)",
+                        "[TeamAssignmentService] 소속팀/GRP TP 충돌 스킵: %s → %s (이미 TP 있음)",
                         c.getEmployeeId(), teamId));
                 continue;
             }
-            // (구)TM = 이전 팀 → 그 팀의 TP로 재배정 금지 (자동 배치 단계에서 다른 팀으로)
             if (c.isTP() && DepartmentTeamResolver.isBlockedAsTpForPreviousTm(c, teamId, base, idsInBase)) {
                 skipped++;
                 System.out.println(String.format(
@@ -213,9 +210,45 @@ public class TeamAssignmentService {
         }
         if (seeded > 0 || skipped > 0) {
             System.out.println(String.format(
-                    "[TeamAssignmentService] 소속팀 사전배정: %d명 배치, %d명 스킵", seeded, skipped));
+                    "[TeamAssignmentService] 소속팀/GRP 사전배정: %d명 배치, %d명 스킵", seeded, skipped));
         }
         return new SeedResult(seeded, skipped);
+    }
+
+    /**
+     * ① 소속팀 있으면 해당 팀만. ② 소속팀 없고 GRP만 있으면 해당 그룹 내 균등 선택.
+     */
+    private static LineTeamDto resolveSeedTeam(
+            CrewMemberDto c,
+            String dept,
+            String grp,
+            String base,
+            List<String> idsInBase,
+            Map<String, LineTeamDto> byTeamId) {
+        if (dept != null) {
+            String teamId = DepartmentTeamResolver.resolveTeamId(dept, base, idsInBase);
+            return teamId != null ? byTeamId.get(teamId) : null;
+        }
+        Integer group = DepartmentTeamResolver.resolveGroupNumber(grp);
+        if (group == null) {
+            return null;
+        }
+        List<String> groupIds = DepartmentTeamResolver.filterTeamIdsByGroup(idsInBase, group);
+        if (groupIds.isEmpty()) {
+            return null;
+        }
+        List<LineTeamDto> candidates = new ArrayList<>();
+        for (String id : groupIds) {
+            LineTeamDto t = byTeamId.get(id);
+            if (t == null) continue;
+            if (c.isTP() && t.getMembers().stream().anyMatch(CrewMemberDto::isTP)) continue;
+            if (c.isTP() && DepartmentTeamResolver.isBlockedAsTpForPreviousTm(c, id, base, idsInBase)) continue;
+            candidates.add(t);
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return pickTeamForMember(candidates, c);
     }
 
     private record SeedResult(int seeded, int skipped) {}
@@ -740,6 +773,14 @@ public class TeamAssignmentService {
         if (member == null) {
             return pickRandomTeamAmongMinLoadWithCapacity(teams);
         }
+        // 우선순위: FROM → RANK → 직급 → 팀 총원 (한 명에게는 하나만 적용)
+        String fromQ = member.getLineQualification();
+        if (LineQualificationUtil.isBalancedDistributionQualification(fromQ)) {
+            LineTeamDto fromBalanced = pickTeamForBalancedLineQualification(teams, fromQ);
+            if (fromBalanced != null) {
+                return fromBalanced;
+            }
+        }
         String token = member.getRankToken();
         if (RankTokenUtil.isBalancedDistributionToken(token)) {
             LineTeamDto balanced = pickTeamForBalancedRankToken(teams, token);
@@ -752,13 +793,6 @@ public class TeamAssignmentService {
             LineTeamDto gradeBalanced = pickTeamForBalancedGradeToken(teams, gradeToken);
             if (gradeBalanced != null) {
                 return gradeBalanced;
-            }
-        }
-        String fromQ = member.getLineQualification();
-        if (LineQualificationUtil.isBalancedDistributionQualification(fromQ)) {
-            LineTeamDto fromBalanced = pickTeamForBalancedLineQualification(teams, fromQ);
-            if (fromBalanced != null) {
-                return fromBalanced;
             }
         }
         LineTeamDto team = pickRandomTeamAmongMinLoadWithCapacity(teams);
@@ -785,16 +819,16 @@ public class TeamAssignmentService {
         if (valid.isEmpty()) {
             return null;
         }
-        LineTeamDto balanced = pickTeamForBalancedRankToken(valid, RankTokenUtil.TS_OJT);
-        if (balanced != null) {
-            return balanced;
-        }
         String fromQ = ts.getLineQualification();
         if (LineQualificationUtil.isBalancedDistributionQualification(fromQ)) {
             LineTeamDto fromBalanced = pickTeamForBalancedLineQualification(valid, fromQ);
             if (fromBalanced != null) {
                 return fromBalanced;
             }
+        }
+        LineTeamDto balanced = pickTeamForBalancedRankToken(valid, RankTokenUtil.TS_OJT);
+        if (balanced != null) {
+            return balanced;
         }
         return findTeamWithFewestTS(valid, ts);
     }

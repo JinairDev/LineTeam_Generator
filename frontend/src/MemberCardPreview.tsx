@@ -2,6 +2,7 @@ import { memo } from 'react'
 import type { CrewMember } from './types'
 import { memberHasLeaveStyleStatus, memberStatusBadgeText } from './memberStatusUi'
 import { MemberMetaBadges, FromBadge } from './memberMetaBadges'
+import { nameBgStyle } from './nameBgColor'
 
 interface MemberCardPreviewProps {
   member: CrewMember
@@ -26,7 +27,12 @@ function MemberCardPreviewInner({ member }: MemberCardPreviewProps) {
           {member.employeeId} · {member.gender || '-'} · {member.grade || '-'}
         </span>
       </div>
-      <div className="member-name member-name-floating">{member.name || '-'}</div>
+      <div
+        className="member-name member-name-floating"
+        style={nameBgStyle(member.nameBgColor)}
+      >
+        {member.name || '-'}
+      </div>
       <MemberMetaBadges member={member} />
     </div>
   )

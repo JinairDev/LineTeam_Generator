@@ -20,6 +20,7 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { DeptSeedNotice, type DeptSeedNoticeData } from './DeptSeedNotice'
 import { detectBalanceMoveIssues, type BalanceMoveIssue } from './balanceDiff'
 import { countTpTs, filterTpTsForPreAssign } from './rankToken'
+import { nameBgStyle } from './nameBgColor'
 import './App.css'
 
 type Step = 'upload' | 'review' | 'preAssignChoice' | 'preAssign' | 'assigned'
@@ -500,7 +501,7 @@ function App() {
                   {crew.slice(0, 10).map((m, idx) => (
                     <tr key={`${m.employeeId}-${idx}`}>
                       <td>{m.employeeId}</td>
-                      <td>{m.name}</td>
+                      <td style={nameBgStyle(m.nameBgColor)}>{m.name}</td>
                       <td>{m.base}</td>
                       <td>{m.positionCode}</td>
                       <td>{m.line}</td>
@@ -600,8 +601,8 @@ function App() {
             </p>
             {deptSeedNotice && deptSeedNotice.context === 'preAssign' && (
               <div className="dept-seed-banner">
-                <strong>소속팀 선배치 · {deptSeedNotice.seeded}명</strong>
-                {' — '}엑셀 「소속팀」 기준으로 팀에 미리 넣었습니다
+                <strong>소속팀/GRP 선배치 · {deptSeedNotice.seeded}명</strong>
+                {' — '}「소속팀」또는 「GRP」가 있는 인원만 미리 넣었습니다
                 {deptSeedNotice.skipped > 0 ? ` (스킵 ${deptSeedNotice.skipped}명)` : ''}.
               </div>
             )}
@@ -654,8 +655,8 @@ function App() {
             </div>
             {deptSeedNotice && deptSeedNotice.context === 'assigned' && deptSeedNotice.seeded > 0 && (
               <div className="dept-seed-banner">
-                <strong>소속팀 선배치 · {deptSeedNotice.seeded}명</strong>
-                {' — '}해당 인원을 먼저 고정한 뒤 나머지를 자동 편성했습니다
+                <strong>소속팀/GRP 선배치 · {deptSeedNotice.seeded}명</strong>
+                {' — '}소속팀·GRP 인원을 먼저 고정한 뒤 나머지를 자동 편성했습니다
                 {deptSeedNotice.skipped > 0 ? ` (스킵 ${deptSeedNotice.skipped}명)` : ''}.
               </div>
             )}

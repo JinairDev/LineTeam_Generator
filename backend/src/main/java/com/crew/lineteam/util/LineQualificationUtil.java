@@ -18,6 +18,14 @@ public final class LineQualificationUtil {
         return LJ.equals(qualification) || BX.equals(qualification) || RS.equals(qualification);
     }
 
+    /** FROM(LJ/BX/RS) 균등분배 대상 인원 — 1차 배치 후 이동·스왑하지 않음 */
+    public static boolean isFromDistributionMember(CrewMemberDto member) {
+        if (member == null) {
+            return false;
+        }
+        return isBalancedDistributionQualification(member.getLineQualification());
+    }
+
     public static int countInTeam(LineTeamDto team, String qualification) {
         if (team == null || team.getMembers() == null || qualification == null) {
             return 0;

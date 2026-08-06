@@ -2,7 +2,12 @@ package com.crew.lineteam.service;
 
 import com.crew.lineteam.dto.CrewMemberDto;
 import com.crew.lineteam.dto.LineTeamDto;
+import org.apache.poi.hssf.usermodel.HSSFCell;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.hssf.util.HSSFColor;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFCell;
+import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
@@ -51,6 +56,7 @@ public class ExcelService {
             entry("grade", new String[]{"직급", "grade", "GRADE", "직급코드"}),
             entry("status", new String[]{"재직상태", "구분", "status", "STATUS"}),
             entry("department", new String[]{"소속팀", "부서", "department", "DEPARTMENT"}),
+            entry("grp", new String[]{"GRP", "Grp", "그룹"}),
             entry("rank", new String[]{"Qualification", "자격", "방송자격", "자격코드"}),
             entry("from", new String[]{"FROM", "from", "From"}),
             entry("annc", new String[]{"ANNC", "Annc", "annc"}),
@@ -325,7 +331,63 @@ public class ExcelService {
             return getCellString(row.getCell(idx));
         });
         dto.setImportColumns(importColumns);
+        int nameIdx = colIndex.getOrDefault("name", -1);
+        if (nameIdx >= 0) {
+            dto.setNameBgColor(extractCellFillHex(row.getCell(nameIdx)));
+        }
         return dto;
+    }
+
+    /**
+     * 「이름」셀 배경(fill) → #RRGGBB. 미지정·흰색에 가까운 색은 null.
+     * .xlsx(XSSF) / .xls(HSSF) 지원. 테마색은 tint 반영 RGB 사용.
+     */
+    private static String extractCellFillHex(Cell cell) {
+        if (cell == null) return null;
+        CellStyle style = cell.getCellStyle();
+        if (style == null) return null;
+        FillPatternType pattern = style.getFillPattern();
+        if (pattern == null || pattern == FillPatternType.NO_FILL) {
+            return null;
+        }
+        byte[] rgb = null;
+        if (cell instanceof XSSFCell xssfCell) {
+            XSSFColor color = xssfCell.getCellStyle().getFillForegroundXSSFColor();
+            if (color == null) {
+                color = xssfCell.getCellStyle().getFillBackgroundXSSFColor();
+            }
+            if (color != null) {
+                rgb = color.getRGBWithTint();
+                if (rgb == null) {
+                    rgb = color.getRGB();
+                }
+            }
+        } else if (cell instanceof HSSFCell hssfCell) {
+            short idx = hssfCell.getCellStyle().getFillForegroundColor();
+            HSSFWorkbook wb = hssfCell.getSheet().getWorkbook();
+            HSSFColor color = wb.getCustomPalette().getColor(idx);
+            if (color == null) {
+                for (HSSFColor.HSSFColorPredefined predefined : HSSFColor.HSSFColorPredefined.values()) {
+                    if (predefined.getIndex() == idx) {
+                        color = predefined.getColor();
+                        break;
+                    }
+                }
+            }
+            if (color != null) {
+                short[] triplet = color.getTriplet();
+                if (triplet != null && triplet.length >= 3) {
+                    rgb = new byte[]{(byte) triplet[0], (byte) triplet[1], (byte) triplet[2]};
+                }
+            }
+        }
+        if (rgb == null || rgb.length < 3) return null;
+        int r = rgb[0] & 0xFF;
+        int g = rgb[1] & 0xFF;
+        int b = rgb[2] & 0xFF;
+        // 거의 흰색이면 「색 없음」으로 취급
+        if (r >= 250 && g >= 250 && b >= 250) return null;
+        return String.format("#%02X%02X%02X", r, g, b);
     }
 
     private CrewMemberDto crewMemberFromColumnValues(Map<String, Integer> colIndex, Function<String, String> get) {
@@ -341,8 +403,8 @@ public class ExcelService {
                 .grade(nullToEmpty(get.apply("grade")))
                 .status(nullToEmpty(get.apply("status")))
                 .department(nullToEmpty(get.apply("department")))
+                .grp(nullToEmpty(get.apply("grp")))
                 .rank(nullToEmpty(get.apply("rank")))
-                .department(nullToEmpty(get.apply("department")))
                 .annc(nullToEmpty(get.apply("annc")))
                 .qualification(nullToEmpty(get.apply("qualification")))
                 .build();
@@ -478,12 +540,18 @@ public class ExcelService {
             return "";
         }
         String h = header.trim();
-        // 소속팀·(구)TM 은 importColumns(원본 행)보다 편성 결과/원본 소속(department)이 우선
+        // 소속팀만 편성 결과로 갱신, (구)TM·그 외 열은 업로드 원본 유지
         if ("소속팀".equals(h)) {
             return nz(buildAssignedDepartment(team != null ? team.getTeamId() : null, m));
         }
         if (isLegacyTmColumn(h)) {
-            return nz(originalInputDepartment(m));
+            if (m.getImportColumns() != null) {
+                String v = m.getImportColumns().get(header);
+                if (v != null) {
+                    return v;
+                }
+            }
+            return nz(com.crew.lineteam.util.DepartmentTeamResolver.inputLegacyTm(m));
         }
         if (m.getImportColumns() != null) {
             String v = m.getImportColumns().get(header);
@@ -563,6 +631,9 @@ public class ExcelService {
         }
         if ("소속팀".equals(header)) {
             return nz(buildAssignedDepartment(team != null ? team.getTeamId() : null, m));
+        }
+        if ("GRP".equalsIgnoreCase(header) || "그룹".equals(header)) {
+            return nz(m.getGrp());
         }
         return "";
     }
