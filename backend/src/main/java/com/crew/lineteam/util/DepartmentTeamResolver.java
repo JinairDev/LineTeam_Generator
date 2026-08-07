@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>소속팀: {@code 101TP}, {@code A101} 등 → 특정 팀</li>
  *   <li>GRP: {@code 1}~{@code 5} → SEL A1xx~A5xx 그룹 내 임의 팀</li>
+ *   <li>(구)TM 이전 팀 TP 금지: 소속팀이 같은 팀이면 소속팀 우선으로 예외</li>
  * </ul>
  */
 public final class DepartmentTeamResolver {
@@ -115,6 +116,7 @@ public final class DepartmentTeamResolver {
 
     /**
      * TP가 (구)TM으로 확인된 이전 팀에 다시 TP로 들어가면 안 될 때 true.
+     * 단, 엑셀 「소속팀」이 그 후보 팀으로 해석되면 소속팀 우선으로 금지를 적용하지 않는다.
      */
     public static boolean isBlockedAsTpForPreviousTm(
             CrewMemberDto m,
@@ -125,7 +127,15 @@ public final class DepartmentTeamResolver {
             return false;
         }
         String prev = resolvePreviousTeamId(m, normalizedBase, teamIdsInBase);
-        return prev != null && prev.equalsIgnoreCase(candidateTeamId.trim());
+        if (prev == null || !prev.equalsIgnoreCase(candidateTeamId.trim())) {
+            return false;
+        }
+        // 소속팀과 (구)TM이 같아도 소속팀이 있으면 해당 팀 TP 배정 허용
+        String deptTeam = resolveTeamId(inputDepartment(m), normalizedBase, teamIdsInBase);
+        if (deptTeam != null && deptTeam.equalsIgnoreCase(candidateTeamId.trim())) {
+            return false;
+        }
+        return true;
     }
 
     /**
