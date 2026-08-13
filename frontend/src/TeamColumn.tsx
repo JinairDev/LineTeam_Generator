@@ -21,6 +21,8 @@ interface TeamColumnProps {
   tpSwapTarget?: boolean
   /** 균등 분배 검증에서 이탈한 항목 */
   balanceIssues?: TeamBalanceIssue[]
+  /** TP–TS FROM 자격 규칙 위반 (사전 배정 경고) */
+  qualWarn?: string
   /** 편성 결과: 헤더 클릭 시 상단 버블로 접기 */
   collapsible?: boolean
   onCollapse?: () => void
@@ -46,11 +48,13 @@ function TeamColumnInner({
   isDropHighlighted,
   tpSwapTarget,
   balanceIssues,
+  qualWarn,
   collapsible,
   onCollapse,
 }: TeamColumnProps) {
   const isEmpty = team.members.length === 0
   const hasBalanceIssues = Boolean(balanceIssues?.length)
+  const hasQualWarn = Boolean(qualWarn)
   const teamDropEnabled = Boolean(preAssignMode)
   const { setNodeRef: setTeamDropRef, isOver: isTeamOver } = useDroppable({
     id: team.teamId,
@@ -64,7 +68,7 @@ function TeamColumnInner({
   return (
     <div
       ref={setTeamDropRef}
-      className={`team-column card team-card${showDropTarget ? ' drop-target' : ''}${tpSwapTarget ? ' tp-swap-target' : ''}${hasBalanceIssues ? ' team-column--balance-warn' : ''}${teamDropEnabled && isEmpty ? ' team-column-empty-preassign' : ''}${!teamDropEnabled ? ' team-column-droppable' : ''}`}
+      className={`team-column card team-card${showDropTarget ? ' drop-target' : ''}${tpSwapTarget ? ' tp-swap-target' : ''}${hasBalanceIssues || hasQualWarn ? ' team-column--balance-warn' : ''}${teamDropEnabled && isEmpty ? ' team-column-empty-preassign' : ''}${!teamDropEnabled ? ' team-column-droppable' : ''}`}
     >
       {collapsible ? (
         <button
@@ -85,6 +89,13 @@ function TeamColumnInner({
         <div className="team-header">
           <span className="team-id">{team.teamId}</span>
           <span className="team-count">{team.members.length}명</span>
+        </div>
+      )}
+      {hasQualWarn && (
+        <div className="team-balance-flags" role="alert">
+          <span className="team-balance-flag team-balance-flag--qual" title={qualWarn}>
+            TP–TS 자격 위반
+          </span>
         </div>
       )}
       {hasBalanceIssues && (

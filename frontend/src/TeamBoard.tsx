@@ -16,6 +16,7 @@ import { boardCollisionDetection, resolveBoardDropTarget } from './dndCollision'
 import { getTeamMoveDropHint } from './teamMove'
 import { isTP } from './rankToken'
 import { buildTeamBalanceIssueMap } from './teamBalanceFlags'
+import { findTpTsQualViolations } from './tpTsQual'
 
 interface TeamBoardProps {
   teams: LineTeam[]
@@ -41,6 +42,13 @@ export function TeamBoard({ teams, balanceReport, onMoveMember }: TeamBoardProps
     () => buildTeamBalanceIssueMap(balanceReport ?? null),
     [balanceReport]
   )
+  const qualWarnByTeam = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const v of findTpTsQualViolations(teams)) {
+      if (!map.has(v.teamId)) map.set(v.teamId, v.message)
+    }
+    return map
+  }, [teams])
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set())
   const [moveMenu, setMoveMenu] = useState<MoveContextMenu | null>(null)
   const [draggingActive, setDraggingActive] = useState<Active | null>(null)
@@ -232,6 +240,7 @@ export function TeamBoard({ teams, balanceReport, onMoveMember }: TeamBoardProps
                 isDropHighlighted={isHighlighted}
                 tpSwapTarget={isHighlighted && dropHint === 'swap'}
                 balanceIssues={teamIssueMap.get(team.teamId)}
+                qualWarn={qualWarnByTeam.get(team.teamId)}
                 collapsible
                 onCollapse={() => collapseTeam(team.teamId)}
               />

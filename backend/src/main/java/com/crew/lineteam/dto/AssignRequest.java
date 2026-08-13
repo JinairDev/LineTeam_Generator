@@ -25,4 +25,6 @@ public class AssignRequest {
     private PinMode pinMode;
     /** 재편성 시 기준으로 삼을 직전 편성 결과 팀 목록 */
     private List<LineTeamDto> previousTeams;
+    /** LOCKED_FIXED 시 현재 팀에 남겨 둘 사번 (소속팀/GRP·사전 배정·수동 이동) */
+    private List<String> pinnedEmployeeIds;
 }

@@ -270,7 +270,16 @@ public class TeamAssignmentService {
             Map<String, Integer> teamCountByBase,
             List<LineTeamDto> previousTeams,
             PinMode pinMode) {
-        AssignBundle bundle = assignBundle(allCrew, teamCountByBase, previousTeams, pinMode);
+        return assignWithBalanceReport(allCrew, teamCountByBase, previousTeams, pinMode, null);
+    }
+
+    public AssignResponse assignWithBalanceReport(
+            List<CrewMemberDto> allCrew,
+            Map<String, Integer> teamCountByBase,
+            List<LineTeamDto> previousTeams,
+            PinMode pinMode,
+            List<String> pinnedEmployeeIds) {
+        AssignBundle bundle = assignBundle(allCrew, teamCountByBase, previousTeams, pinMode, pinnedEmployeeIds);
         FpYyBalanceReport report = fpYyBalanceService.verify(bundle.teams());
         logFpYyBalanceReport(report);
         return AssignResponse.builder()
@@ -286,6 +295,15 @@ public class TeamAssignmentService {
             Map<String, Integer> teamCountByBase,
             List<LineTeamDto> previousTeams,
             PinMode pinMode) {
+        return assignBundle(allCrew, teamCountByBase, previousTeams, pinMode, null);
+    }
+
+    private AssignBundle assignBundle(
+            List<CrewMemberDto> allCrew,
+            Map<String, Integer> teamCountByBase,
+            List<LineTeamDto> previousTeams,
+            PinMode pinMode,
+            List<String> pinnedEmployeeIds) {
         if (allCrew == null || allCrew.isEmpty()) {
             return new AssignBundle(List.of(), 0, 0);
         }
@@ -300,6 +318,14 @@ public class TeamAssignmentService {
 
         Map<String, CrewMemberDto> byId = crew.stream()
                 .collect(Collectors.toMap(CrewMemberDto::getEmployeeId, c -> c, (a, b) -> a));
+        Set<String> lockedIds = new HashSet<>();
+        if (pinnedEmployeeIds != null) {
+            for (String id : pinnedEmployeeIds) {
+                if (id != null && !id.isBlank()) {
+                    lockedIds.add(id.trim());
+                }
+            }
+        }
 
         List<LineTeamDto> teams = new ArrayList<>();
         Set<String> assignedIds = new HashSet<>();
@@ -310,7 +336,11 @@ public class TeamAssignmentService {
             for (CrewMemberDto m : prev.getMembers()) {
                 CrewMemberDto c = byId.get(m.getEmployeeId());
                 if (c == null) continue;
-                if (pinMode == PinMode.BOTH_FIXED) {
+                if (pinMode == PinMode.LOCKED_FIXED) {
+                    if (lockedIds.contains(c.getEmployeeId()) || DepartmentTeamResolver.hasPrefillDepartment(c)) {
+                        keep.add(c);
+                    }
+                } else if (pinMode == PinMode.BOTH_FIXED) {
                     // 사전배정 보드에 올라온 전원 유지(소속팀 시드·수동 TP/TS 포함)
                     keep.add(c);
                 } else if (pinMode == PinMode.TP_FIXED) {
@@ -328,7 +358,7 @@ public class TeamAssignmentService {
             teams.add(team);
             for (CrewMemberDto x : keep) {
                 assignedIds.add(x.getEmployeeId());
-                if (DepartmentTeamResolver.hasPrefillDepartment(x)) {
+                if (pinMode == PinMode.LOCKED_FIXED || DepartmentTeamResolver.hasPrefillDepartment(x)) {
                     departmentPinnedIds.add(x.getEmployeeId());
                 }
             }
@@ -339,7 +369,7 @@ public class TeamAssignmentService {
         // 알림용: 이전 팀에서 유지된 소속팀 인원 + 이번 시드
         int seededForNotice = departmentPinnedIds.size();
 
-        if (pinMode == PinMode.BOTH_FIXED) {
+        if (pinMode == PinMode.BOTH_FIXED || pinMode == PinMode.LOCKED_FIXED) {
             placeRemainingTpsForPinnedTeams(teams, crew, assignedIds);
             assignTsAndOthers(teams, crew, assignedIds);
             evennessCorrectionService.correct(teams, departmentPinnedIds);
@@ -360,7 +390,7 @@ public class TeamAssignmentService {
             Map<String, Integer> teamCountByBase,
             List<LineTeamDto> previousTeams,
             PinMode pinMode) {
-        return assignBundle(allCrew, teamCountByBase, previousTeams, pinMode).teams();
+        return assignBundle(allCrew, teamCountByBase, previousTeams, pinMode, null).teams();
     }
 
     /**

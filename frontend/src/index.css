@@ -321,6 +321,12 @@ input[type="file"] {
   border: 1px solid #fcd34d;
 }
 
+.team-balance-flag--qual {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
 .team-column {
   min-height: 200px;
   display: flex;

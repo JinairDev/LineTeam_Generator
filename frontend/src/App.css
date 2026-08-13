@@ -724,6 +724,13 @@
   gap: 0.5rem;
 }
 
+.reassign-pin-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-muted, #6b5a63);
+}
+
 .stats-bar {
   display: flex;
   align-items: center;

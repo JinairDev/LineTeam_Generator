@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import type { FpYyBalanceReport, LineTeam } from './types'
 import {
   uploadExcel,
@@ -21,9 +21,21 @@ import { DeptSeedNotice, type DeptSeedNoticeData } from './DeptSeedNotice'
 import { detectBalanceMoveIssues, type BalanceMoveIssue } from './balanceDiff'
 import { countTpTs, filterTpTsForPreAssign } from './rankToken'
 import { nameBgStyle } from './nameBgColor'
+import { findTpTsQualViolations } from './tpTsQual'
 import './App.css'
 
 type Step = 'upload' | 'review' | 'preAssignChoice' | 'preAssign' | 'assigned'
+
+function prefillEmployeeIds(list: import('./types').CrewMember[]): string[] {
+  const ids: string[] = []
+  for (const m of list) {
+    if (!m.employeeId) continue
+    const dept = m.department?.trim() || m.importColumns?.['소속팀']?.trim()
+    const grp = m.grp?.trim() || m.importColumns?.['GRP']?.trim() || m.importColumns?.['그룹']?.trim()
+    if (dept || grp) ids.push(m.employeeId)
+  }
+  return ids
+}
 
 function App() {
   const hasGoogleClientId = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim())
@@ -44,6 +56,8 @@ function App() {
   const fpYyBalanceRef = useRef(fpYyBalance)
   fpYyBalanceRef.current = fpYyBalance
   const [preAssignPool, setPreAssignPool] = useState<import('./types').CrewMember[]>([])
+  const [lockedEmployeeIds, setLockedEmployeeIds] = useState<Set<string>>(() => new Set())
+  const [movedEmployeeIds, setMovedEmployeeIds] = useState<Set<string>>(() => new Set())
   const [deptSeedNotice, setDeptSeedNotice] = useState<DeptSeedNoticeData | null>(null)
   const [exportConfirmOpen, setExportConfirmOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -59,6 +73,23 @@ function App() {
     },
     [],
   )
+
+  const tpTsQualViolations = useMemo(() => findTpTsQualViolations(teams), [teams])
+  const pinBreakdown = useMemo(() => {
+    const seed = new Set(lockedEmployeeIds)
+    for (const id of prefillEmployeeIds(crew)) seed.add(id)
+    const moved = [...movedEmployeeIds].filter(Boolean)
+    const seedOnly = [...seed].filter((id) => !movedEmployeeIds.has(id))
+    const all = new Set(seed)
+    for (const id of moved) all.add(id)
+    return {
+      seedOnlyCount: seedOnly.length,
+      movedCount: moved.length,
+      totalCount: all.size,
+      allIds: [...all],
+    }
+  }, [lockedEmployeeIds, movedEmployeeIds, crew])
+  const allPinnedEmployeeIds = pinBreakdown.allIds
 
   const applyAssignResult = useCallback(
     (result: {
@@ -125,6 +156,8 @@ function App() {
     setError(null)
     setLoading(true)
     try {
+      setLockedEmployeeIds(new Set(prefillEmployeeIds(crew)))
+      setMovedEmployeeIds(new Set())
       const result = await assignTeams(crew)
       applyAssignResult(result)
     } catch (err) {
@@ -150,6 +183,8 @@ function App() {
         shells.flatMap((t) => t.members.map((m) => m.employeeId)).filter(Boolean),
       )
       setTeams(shells)
+      setLockedEmployeeIds(new Set([...prefillEmployeeIds(crew), ...seededIds]))
+      setMovedEmployeeIds(new Set())
       setPreAssignPool(tpTs.filter((m) => !seededIds.has(m.employeeId)))
       showDeptSeedNotice(
         shellsRes.departmentSeededCount ?? seededIds.size,
@@ -169,6 +204,8 @@ function App() {
     setError(null)
     setLoading(true)
     try {
+      const placedIds = teams.flatMap((t) => t.members.map((m) => m.employeeId)).filter(Boolean)
+      setLockedEmployeeIds(new Set([...prefillEmployeeIds(crew), ...placedIds]))
       const result = await assignTeams(crew, undefined, {
         pinMode: 'BOTH_FIXED',
         previousTeams: teams,
@@ -192,6 +229,8 @@ function App() {
     setFpYyBalance(null)
     setBalanceMoveIssues(null)
     setPreAssignPool([])
+    setLockedEmployeeIds(new Set())
+    setMovedEmployeeIds(new Set())
   }, [])
 
   const onCsvPasteSubmit = useCallback(async () => {
@@ -263,6 +302,8 @@ function App() {
   const onReassign = useCallback(async () => {
     if (crew.length === 0) return
     setSelectedPinMode(null)
+    setLockedEmployeeIds(new Set(prefillEmployeeIds(crew)))
+    setMovedEmployeeIds(new Set())
     setError(null)
     setLoading(true)
     try {
@@ -287,6 +328,7 @@ function App() {
       const result = await assignTeams(crew, undefined, {
         pinMode: selectedPinMode,
         previousTeams: teams,
+        pinnedEmployeeIds: selectedPinMode === 'LOCKED_FIXED' ? allPinnedEmployeeIds : undefined,
       })
       applyAssignResult(result)
     } catch (err) {
@@ -294,7 +336,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [crew, teams, selectedPinMode, applyAssignResult])
+  }, [crew, teams, selectedPinMode, allPinnedEmployeeIds, applyAssignResult])
 
   const onMoveMember = useCallback(
     async (
@@ -314,6 +356,19 @@ function App() {
           toIndex
         )
         setTeams(result.teams)
+        if (fromTeamId !== toTeamId) {
+          const swappedTp = teams
+            .find((t) => t.teamId === toTeamId)
+            ?.members.find((m) => m.positionCode?.includes('TP') || m.grade?.includes('TP'))
+          setMovedEmployeeIds((prev) => {
+            const next = new Set(prev)
+            next.add(employeeId)
+            if (swappedTp?.employeeId && swappedTp.employeeId !== employeeId) {
+              next.add(swappedTp.employeeId)
+            }
+            return next
+          })
+        }
         const report = result.fpYyBalance ?? null
         setFpYyBalance(report)
         if (report) {
@@ -606,10 +661,32 @@ function App() {
                 {deptSeedNotice.skipped > 0 ? ` (스킵 ${deptSeedNotice.skipped}명)` : ''}.
               </div>
             )}
+            {tpTsQualViolations.length > 0 && (
+              <div className="dept-seed-banner dept-seed-banner--warn" role="alert">
+                <strong>TP–TS 자격 경고 · {tpTsQualViolations.length}건</strong>
+                {' — '}TP가 BX/RS이면 TS는 LJ만 가능합니다. 소속팀/GRP 선배치 또는 수동 배치를 확인해 주세요.
+                <ul className="qual-warn-list">
+                  {tpTsQualViolations.slice(0, 8).map((v) => (
+                    <li key={`${v.teamId}-${v.tsName}`}>{v.message}</li>
+                  ))}
+                </ul>
+                {tpTsQualViolations.length > 8 && (
+                  <p className="qual-warn-more">외 {tpTsQualViolations.length - 8}건</p>
+                )}
+              </div>
+            )}
             <PreAssignTpTsBoard
               teams={teams}
               pool={preAssignPool}
-              onTeamsChange={setTeams}
+              onTeamsChange={(next) => {
+                setTeams(next)
+                setLockedEmployeeIds(
+                  new Set([
+                    ...prefillEmployeeIds(crew),
+                    ...next.flatMap((t) => t.members.map((m) => m.employeeId)).filter(Boolean),
+                  ]),
+                )
+              }}
               onPoolChange={setPreAssignPool}
             />
           </section>
@@ -660,6 +737,27 @@ function App() {
                 {deptSeedNotice.skipped > 0 ? ` (스킵 ${deptSeedNotice.skipped}명)` : ''}.
               </div>
             )}
+            {selectedPinMode === 'LOCKED_FIXED' && (
+              <div className="dept-seed-banner" role="status">
+                <strong>사전·수동 고정 · 총 {pinBreakdown.totalCount}명</strong>
+                {' — '}소속팀/GRP·사전 배정 {pinBreakdown.seedOnlyCount}명
+                {', '}드래그 이동 {pinBreakdown.movedCount}명. 합이 총 고정 인원입니다.
+              </div>
+            )}
+            {tpTsQualViolations.length > 0 && (
+              <div className="dept-seed-banner dept-seed-banner--warn" role="alert">
+                <strong>TP–TS 자격 경고 · {tpTsQualViolations.length}건</strong>
+                {' — '}TP가 BX/RS인 팀에 LJ가 아닌 TS가 있습니다. (선배치·수동 이동으로 남을 수 있습니다)
+                <ul className="qual-warn-list">
+                  {tpTsQualViolations.slice(0, 8).map((v) => (
+                    <li key={`${v.teamId}-${v.tsName}`}>{v.message}</li>
+                  ))}
+                </ul>
+                {tpTsQualViolations.length > 8 && (
+                  <p className="qual-warn-more">외 {tpTsQualViolations.length - 8}건</p>
+                )}
+              </div>
+            )}
             <div className="reassign-pin-row">
               <div className="reassign-pin-left">
                 <div className="reassign-pin-buttons">
@@ -687,7 +785,23 @@ function App() {
                   >
                     TP·TS 고정
                   </button>
+                  <button
+                    type="button"
+                    className={`btn btn-large btn-pin${selectedPinMode === 'LOCKED_FIXED' ? ' btn-pin-active' : ''}`}
+                    onClick={() => selectPinMode('LOCKED_FIXED')}
+                    disabled={loading}
+                    title="소속팀/GRP·사전 배정·직접 옮긴 인원은 유지하고 나머지만 다시 편성합니다"
+                  >
+                    사전·수동 고정
+                  </button>
                 </div>
+                {selectedPinMode === 'LOCKED_FIXED' && (
+                  <p className="reassign-pin-hint">
+                    총 {pinBreakdown.totalCount}명 고정
+                    {' — '}소속팀/GRP·사전 배정 {pinBreakdown.seedOnlyCount}명
+                    {', '}드래그 이동 {pinBreakdown.movedCount}명. 이 인원은 그대로 두고 나머지만 다시 돌립니다.
+                  </p>
+                )}
               </div>
               <div className="reassign-pin-right">
                 <button

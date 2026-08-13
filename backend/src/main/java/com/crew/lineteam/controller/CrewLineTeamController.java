@@ -173,7 +173,8 @@ public class CrewLineTeamController {
                     request.getCrew(),
                     request.getTeamCountByBase(),
                     request.getPreviousTeams(),
-                    request.getPinMode()
+                    request.getPinMode(),
+                    request.getPinnedEmployeeIds()
             );
         } else {
             response = teamAssignmentService.assignWithBalanceReport(

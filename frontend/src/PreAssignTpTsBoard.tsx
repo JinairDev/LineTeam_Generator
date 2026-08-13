@@ -22,6 +22,7 @@ import {
 } from './preAssignMove'
 import { boardCollisionDetection, resolveBoardDropTarget } from './dndCollision'
 import { isTP, isTS } from './rankToken'
+import { findTpTsQualViolations } from './tpTsQual'
 
 interface PreAssignTpTsBoardProps {
   teams: LineTeam[]
@@ -276,6 +277,7 @@ export function PreAssignTpTsBoard({
           {teams.map((team) => {
             const dropHint = getPreAssignDropHint(teams, draggingMember, overTeamId)
             const isHighlighted = overTeamId === team.teamId
+            const teamQualWarn = findTpTsQualViolations([team])[0]?.message
             return (
             <TeamColumn
               key={team.teamId}
@@ -283,6 +285,7 @@ export function PreAssignTpTsBoard({
               preAssignMode
               isDropHighlighted={isHighlighted}
               tpSwapTarget={isHighlighted && dropHint === 'swap'}
+              qualWarn={teamQualWarn}
               otherTeams={teams.filter((t) => t.teamId !== team.teamId)}
               onMoveMember={handleMove}
               onOpenMoveMenu={(e, employeeId, fromTeamId, otherTeams) => {

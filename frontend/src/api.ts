@@ -93,7 +93,7 @@ export interface TeamCountByBase {
 }
 
 /** 재편성 시 TP/TS 고정 모드 */
-export type PinMode = 'TP_FIXED' | 'TS_FIXED' | 'BOTH_FIXED'
+export type PinMode = 'TP_FIXED' | 'TS_FIXED' | 'BOTH_FIXED' | 'LOCKED_FIXED'
 
 export async function createTeamShells(crew: CrewMember[]): Promise<TeamShellsResponse> {
   let res: Response
@@ -112,7 +112,7 @@ export async function createTeamShells(crew: CrewMember[]): Promise<TeamShellsRe
 export async function assignTeams(
   crew: CrewMember[],
   teamCountByBase?: TeamCountByBase,
-  options?: { pinMode?: PinMode; previousTeams?: LineTeam[] }
+  options?: { pinMode?: PinMode; previousTeams?: LineTeam[]; pinnedEmployeeIds?: string[] }
 ): Promise<AssignResponse> {
   let res: Response
   try {
@@ -123,7 +123,13 @@ export async function assignTeams(
         crew,
         ...(teamCountByBase && Object.keys(teamCountByBase).length > 0 && { teamCountByBase }),
         ...(options?.pinMode && options?.previousTeams?.length
-          ? { pinMode: options.pinMode, previousTeams: options.previousTeams }
+          ? {
+              pinMode: options.pinMode,
+              previousTeams: options.previousTeams,
+              ...(options.pinnedEmployeeIds?.length
+                ? { pinnedEmployeeIds: options.pinnedEmployeeIds }
+                : {}),
+            }
           : {}),
       }),
     })

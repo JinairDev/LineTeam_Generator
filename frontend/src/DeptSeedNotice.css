@@ -78,3 +78,25 @@
   font-weight: 700;
   color: var(--lj-cyan-deep, #0380b4);
 }
+
+.dept-seed-banner--warn {
+  border-color: rgba(185, 28, 28, 0.35);
+  background: rgba(254, 226, 226, 0.85);
+}
+
+.dept-seed-banner--warn strong {
+  color: #b91c1c;
+}
+
+.qual-warn-list {
+  margin: 0.45rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.qual-warn-more {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(185, 28, 28, 0.85);
+}
